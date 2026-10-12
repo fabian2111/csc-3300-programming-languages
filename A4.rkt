@@ -18,7 +18,10 @@
 (define-type Binding Bind)
 (struct Bind ([name : Symbol] [val : Real]) #:transparent)
 
-(define top-env 3)
+(define-type Env (Listof Binding))
+
+(define top-env empty)
+(define extend-env cons)
 
 (define (serialize [val : Value]) : String
   (match val
@@ -28,6 +31,9 @@
     [(CloV _ _ _) "#<procedure>"]
     ;add primitive ops
   ))
+
+;???
+#;(define (lookup [sym : Symbol] [env : Env]) : Value)
 
 
 
@@ -39,7 +45,10 @@
   ))
 
 
-#;(define (interp [e : ExprC] [env : Env]) : Value)
+#;(define (interp [e : ExprC] [env : Env]) : Value
+  (match e
+    [(IdC n) (lookup n env)] 
+  )
 
 #;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
