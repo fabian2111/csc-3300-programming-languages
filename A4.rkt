@@ -1,11 +1,11 @@
 #lang typed/racket
 (require typed/rackunit)
 
-(define-type ExprC (U NumV IdC StrV if % AppC))
+(define-type ExprC (U NumV IdC StrV If % AppC))
 (struct NumV ([num : Real]) #:transparent)
 (struct IdC ([sym : Symbol]) #:transparent)
 (struct StrV ([str : String]) #:transparent)
-(struct if ([expr : ExprC] [ifTrue : ExprC] [else : ExprC]) #:transparent)
+(struct If ([expr : ExprC] [ifTrue : ExprC] [else : ExprC]) #:transparent)
 ;(struct local
 (struct % ([ids : (Listof IdC)] [body : ExprC]) #:transparent)
 (struct AppC ([a : Real]) #:transparent)
@@ -26,14 +26,20 @@
 (define (serialize [val : Value]) : String
   (match val
     [(BoolV b) (if b "true" "false")]
-    [(NumC n) (~v n)]
+    [(NumV n) (~v n)]
     [(StrV s) (~v s)]
     [(CloV _ _ _) "#<procedure>"]
     ;add primitive ops
   ))
 
 ;???
-#;(define (lookup [sym : Symbol] [env : Env]) : Value)
+#;(define (lookup [sym : Symbol] [env : Env]) : Value
+    (cond
+      [(empty? env) (error 'lookup "name not found")]
+      [else (cond
+              [(symbol=? for (Bind-name (first env)))
+               (bind-val (first env))]
+              [else (lookup for (rest env))])]))
 
 
 
@@ -44,11 +50,18 @@
     [(? string? s) (StrV s)]
   ))
 
+(check-equal? (parse 4) {NumV 4})
+(check-equal? (parse "test") {StrV "test"})
+
 
 #;(define (interp [e : ExprC] [env : Env]) : Value
   (match e
-    [(IdC n) (lookup n env)] 
-  )
+    [(IdC s) (lookup s env)]
+    [(NumV n) (NumV n)]
+    [(StrV s) (StrV s)]
+    [(AppC f a) (interp (
+
+  ))
 
 #;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
