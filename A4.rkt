@@ -1,25 +1,24 @@
 #lang typed/racket
 (require typed/rackunit)
 
-(define-type ExprC (U NumV IdC StrV If LamC AppC))
+(define-type ExprC (U NumC IdC StrV If % BoolV AppC))
 (struct NumV ([num : Real]) #:transparent)
+(struct NumC ([num : Real]) #:transparent)
+
 (struct IdC ([sym : Symbol]) #:transparent)
 (struct StrV ([str : String]) #:transparent)
 (struct If ([expr : ExprC] [ifTrue : ExprC] [else : ExprC]) #:transparent)
 ;(struct local
-;(struct % ([ids : (Listof IdC)] [body : ExprC]) #:transparent)
-(struct LamC ([arg : Symbol] [body : ExprC]) #:transparent)
-
+(struct % ([ids : (Listof IdC)] [body : ExprC]) #:transparent)
 ;(struct AppC ([a : Real]) #:transparent)
-(struct AppC ([fun : ExprC] [args : (Listof ExprC)]) #:transparent)
+(struct AppC ([fun : ExprC] [args : (Listof ExprC)])#:transparent)
 
 (struct PrimV ([op : Symbol]) #:transparent)
-(define-type Value (U NumV BoolV StrV CloV PrimV))
-;(define-type Value (U Real Boolean String))
+;(define-type Value (U NumV BoolV StrV CloV PrimV))
+(define-type Value(U NumV BoolV StrV CloV PrimV))
 (struct BoolV ([boo : Boolean]) #:transparent)
 ;(struct CloV ([params : (Listof IdC)] [body : ExprC] [env : Env]) #:transparent)
-;[params : (Listof Symbol)]
-(struct CloV ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
+(struct CloV ([params : (Listof IdC)][body : ExprC][env : Env]) #:transparent)
 
 
 
@@ -30,10 +29,7 @@
 ;(define-type Env (Listof Binding))
 (define-type Env (Listof Bind))
 
-;(define top-env empty)
-
-(define top-env (list (Bind 'true (BoolV #t)) (Bind 'false (BoolV #f)) (Bind 'x {NumV 4})  ))
-
+(define top-env empty)
 (define extend-env cons)
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -61,7 +57,7 @@
 
 ; Test serializing closures
 (check-equal?
- (serialize (CloV empty (NumV 5) empty))"#<procedure>")
+ (serialize (CloV empty (NumC 5) empty))"#<procedure>")
 
 ; Test serializing primitive operators
 (check-equal? (serialize (PrimV '+)) "#<primop>")
@@ -72,19 +68,19 @@
 ; ----------------------------------------Look Up for Variable in Environment-------------------------------------------------
 (define (lookup [sym : Symbol] [env : Env]) : Value
     (cond
-      [(empty? env) (error 'lookup "DRMG4: Binding was not found")]
+      [(empty? env) (error 'lookup "DRMG4: Symbol that was attempted to bind was not found")]
       [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
       [else (lookup sym (rest env))]))
 
 
 (check-equal?(lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
-(check-exn (regexp (regexp-quote " DRMG4: Binding was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
+(check-exn (regexp (regexp-quote " DRMG4: Symbol that was attempted to bind was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
 
 ; -----------------------------------Parser---------------------------------------------------
 ;Takes in a Sexp and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
   (match s
-    [(? real? n) (NumV n)]
+    [(? real? n) (NumC n)]
     [(? string? s) (StrV s)]
     [(? symbol? sym) (IdC sym)]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
@@ -92,43 +88,54 @@
     [(list fun args ...) (AppC (parse fun) (map parse args))]
   ))
 
-(check-equal? (parse 4) {NumV 4})
+(check-equal? (parse 4) {NumC 4})
 (check-equal? (parse "test") {StrV "test"})
 (check-equal? (parse 'Hello) {IdC 'Hello})
-(check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumV 10) (NumV 20)))
+(check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumC 10) (NumC 20)))
 (check-equal? (parse '{% (x y) -> x}) (% (list (IdC 'x) (IdC 'y)) (IdC 'x)))
-(check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumV 2) (NumV 3))))
+(check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumC 2) (NumC 3))))
+(check-equal? (parse 'true) (IdC 'true))
+(check-equal? (parse 'false) (IdC 'false))
 
-
-;------- interp helper ---------
-
-;Takes in a list of args and a list of functions and it evaluates the args
-;into values using interp
-(define (interp-args [args : (Listof ExprC)] [env : Env]) : (Listof Value)
-  (match args
-    ['()'()]
-    [(cons first rest)
-     (cons (interp first env)
-           (interp-args rest env))]))
-
+(parse '{+ 1 3})
 
 ; -------------------------------------------------------------------------------------------------
-#;(define (interp [e : ExprC] [env : Env]) : Value
+(define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(IdC s) (lookup s env)]
-    [(NumV n) (NumV n)]
+    [(NumC n) (NumV n)]
     [(StrV s) (StrV s)]
-    [(LamC args body) (CloV args body env)]
-    [(AppC func args) (define fundef (interp func env))
-           (cond
-             [(equal? (length (CloV-args fundef)) (length args))
-                (define values (interp-args args env))
-               (interp (CloV-body fundef) values)]
-             
-             #;[true (interp (subst-args (FundefC-args fundef) values (FundefC-body fundef)) env)]
-                [else (error 'interp "DRMG3: Number of Arguments are not equal, got ~e" args)])]
+    [(If condition IfTrue IfFalse)
+        (match (interp condition env)
+          [(BoolV #t) (interp IfTrue env)]
+          [(BoolV #f) (interp IfFalse env)])]
+          
+    
+   ; [(AppC f a) (interp ( 
 
   ))
+
+(check-equal? (interp (NumC 5) empty) (NumV 5))
+(check-equal? (interp (StrV "hello") empty) (StrV "hello"))
+(check-equal? (interp (IdC 'x) (list (Bind 'x (NumV 10)))) (NumV 10))
+
+(check-equal?
+ (interp (If (IdC 'true) (NumC 10) (NumC 20))(list (Bind 'true (BoolV #t))))
+ (NumV 10))
+
+(check-equal?(interp (If (IdC 'false) (NumC 10) (NumC 20))  (list (Bind 'false (BoolV #f))))
+ (NumV 20))
+ 
+
+#;(check-equal?
+ (interp (If (IdC 'true) (NumV 10) (NumV 20))
+         (list (Bind 'true (BoolV #t))))
+ (NumV 10))
+
+#;(check-equal?
+ (interp (If (IdC 'false) (NumV 10) (NumV 20))
+         (list (Bind 'false (BoolV #f))))
+ (NumV 20))
 
 #;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
