@@ -8,8 +8,8 @@
 (struct If ([expr : ExprC] [ifTrue : ExprC] [else : ExprC]) #:transparent)
 ;(struct local
 (struct % ([ids : (Listof IdC)] [body : ExprC]) #:transparent)
-(struct AppC ([a : Real]) #:transparent)
-;(struct
+;(struct AppC ([a : Real]) #:transparent)
+(struct AppC ([fun : ExprC] [args : (Listof ExprC)])#:transparent)
 
 (struct PrimV ([op : Symbol]) #:transparent)
 ;(define-type Value (U NumV BoolV StrV CloV PrimV))
@@ -31,7 +31,7 @@
 (define extend-env cons)
 
 ; ----------------------------------------Serialize -------------------------------------------
-; Addided primitive ops  - M
+; Added primitive ops  - M
 (define (serialize [val : Value]) : String
   (match val
     [(BoolV b) (if b "true" "false")]
@@ -83,13 +83,15 @@
     [(? symbol? sym) (IdC sym)]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
     [(list '% (list (? symbol? params)...) '->  body ) (% (map IdC (cast params (Listof Symbol))) (parse body))]
+    [(list fun args ...) (AppC (parse fun) (map parse args))]
   ))
 
 (check-equal? (parse 4) {NumV 4})
 (check-equal? (parse "test") {StrV "test"})
 (check-equal? (parse 'Hello) {IdC 'Hello})
 (check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumV 10) (NumV 20)))
-(check-equal? (parse '{% x y -> {+ 5 10}})
+(check-equal? (parse '{% (x y) -> x}) (% (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+(check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumV 2) (NumV 3))))
 
 
 ; -------------------------------------------------------------------------------------------------
