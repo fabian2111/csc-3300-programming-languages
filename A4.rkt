@@ -1,7 +1,7 @@
 #lang typed/racket
 (require typed/rackunit)
 
-(define-type ExprC (U NumV IdC StrV If % AppC))
+(define-type ExprC (U NumV IdC StrV If % BoolV AppC))
 (struct NumV ([num : Real]) #:transparent)
 (struct IdC ([sym : Symbol]) #:transparent)
 (struct StrV ([str : String]) #:transparent)
@@ -92,17 +92,47 @@
 (check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumV 10) (NumV 20)))
 (check-equal? (parse '{% (x y) -> x}) (% (list (IdC 'x) (IdC 'y)) (IdC 'x)))
 (check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumV 2) (NumV 3))))
+(check-equal? (parse 'true) (IdC 'true))
+(check-equal? (parse 'false) (IdC 'false))
 
 
 ; -------------------------------------------------------------------------------------------------
-#;(define (interp [e : ExprC] [env : Env]) : Value
+(define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(IdC s) (lookup s env)]
     [(NumV n) (NumV n)]
     [(StrV s) (StrV s)]
+    [(If condition IfTrue IfFalse)
+        (match (interp condition env)
+          [(BoolV #t) (interp IfTrue env)]
+          [(BoolV #f) (interp IfFalse env)])]
+          
+    
    ; [(AppC f a) (interp (
 
   ))
+
+(check-equal? (interp (NumV 5) empty) (NumV 5))
+(check-equal? (interp (StrV "hello") empty) (StrV "hello"))
+(check-equal? (interp (IdC 'x) (list (Bind 'x (NumV 10)))) (NumV 10))
+;(check-equal?(interp (If (IdC 'true) (NumV 10) (NumV 20)) empty) (NumV 10))
+(check-equal?
+ (interp (If (IdC 'true) (NumV 10) (NumV 20))     (list (Bind 'true (BoolV #t))))
+ (NumV 10))
+
+(check-equal?(interp (If (IdC 'false) (NumV 10)(NumV 20))  (list (Bind 'false (BoolV #f))))
+ (NumV 20))
+ 
+
+#;(check-equal?
+ (interp (If (IdC 'true) (NumV 10) (NumV 20))
+         (list (Bind 'true (BoolV #t))))
+ (NumV 10))
+
+#;(check-equal?
+ (interp (If (IdC 'false) (NumV 10) (NumV 20))
+         (list (Bind 'false (BoolV #f))))
+ (NumV 20))
 
 #;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
