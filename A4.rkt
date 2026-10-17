@@ -150,12 +150,22 @@
 
 (define (interp-prim [op : Symbol] [args : (Listof Value)]) : Value
   (match args
-    [ (list (NumV a) (NumV b)) ]
-  
+    [(list (NumV a) (NumV b))
+      (cond
+        [(equal? op '+) (NumV (+ a b))]
+        [(equal? op '-) (NumV (- a b))]
+        [(equal? op '*) (NumV (* a b))]
+        [(equal? op '/) (if (zero? b)(error 'interp-prim "DRMG4: Division by zero")(NumV (/ a b)))]
+        [(equal? op '<=) (BoolV (<= a b))]
+        )]
     [_ (error 'interp-prim "DRMG4: + expects two numbers")]
 
 
     ))
+         
+    
+  
+    
   
     #;['/
  (match args
@@ -165,7 +175,7 @@
         (NumV (/ a b)))]
    [_ (error 'interp-prim "DRMG4: / expects two numbers")])]
     
-    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")]))
+;    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")]))
 
 (check-equal?(interp-prim '+ (list (NumV 2) (NumV 3)))(NumV 5)) 
 (check-equal? (interp-prim '- (list (NumV 10) (NumV 3))) (NumV 7))
