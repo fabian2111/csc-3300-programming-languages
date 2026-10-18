@@ -23,7 +23,7 @@
 ;(struct local 
 ;(struct % ([ids : (Listof IdC)] [body : ExprC]) #:transparent)
 ;(struct CloV ([params : (Listof IdC)] [body : ExprC] [env : Env]) #:transparent)
-
+ 
 ;(define top-env empty)
 
 ;all prim operations should be added, nvm need to add error
@@ -45,54 +45,43 @@
     [(CloV _ _ _) "#<procedure>"]
     [(PrimV _ ) "#<primop>"]))
 
-; Test serializing numbers
-(check-equal? (serialize (NumV 5)) "5")
-(check-equal? (serialize (NumV -3)) "-3")
-(check-equal? (serialize (NumV 2.5)) "2.5")
-
-; Test serializing booleans
-(check-equal? (serialize (BoolV #t)) "true")
-(check-equal? (serialize (BoolV #f)) "false")
-
-; Test serializing strings
-(check-equal? (serialize (StrV "hello")) "\"hello\"")
-(check-equal? (serialize (StrV "DRMG")) "\"DRMG\"")
-
-; Test serializing closures
-(check-equal?
- (serialize (CloV empty (NumV 5) empty))"#<procedure>") 
-
-; Test serializing primitive operators
-(check-equal? (serialize (PrimV '+)) "#<primop>")
 ; -------------------------------------------------------------------------------------------------
 
-;???
 
 ; ----------------------------------------Look Up for Variable in Environment-------------------------------------------------
 (define (lookup [sym : Symbol] [env : Env]) : Value
-    (cond
+   (cond
       [(empty? env) (error 'lookup "DRMG4: Binding was not found")]
       [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
       [else (lookup sym (rest env))]))
 
 
-(check-equal?(lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
-(check-exn (regexp (regexp-quote " DRMG4: Binding was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
 
-(check-equal? (lookup '+ top-env)(PrimV '+))
-(check-equal? (lookup 'x (list (Bind 'x (StrV "test")))) (StrV "test"))
+;------------------------------- Helper func to find duplicate variables ----------------------
 
+;; has-duplicates? checks whether a list contains repeated symbols.
+
+(define (has-duplicates? [symbols : (Listof Symbol)]) : Boolean
+  (if (empty? symbols)
+      #f
+      (if (member (first symbols) (rest symbols))
+          #t
+          (has-duplicates? (rest symbols)))))
+
+(check-equal? (has-duplicates? '(x y z)) #f)
+(check-equal? (has-duplicates? '(x y x)) #t)
+(check-equal? (has-duplicates? '()) #f)
 ; -----------------------------------Parser---------------------------------------------------
 
+;---------- Parse Multiple-----
 (define (parse-multiple [exprs : (Listof Sexp)]) : (Listof ExprC)
   (match exprs
     ['() '()]
     [(cons f r) (cons (parse f) (parse-multiple r))]
   ))
 
-
+;-----------------------------
 ;Takes in a Sexp and parses it into an ExprC
-
 ;	{ local [‹id›=‹expr›]* do ‹expr› }
 (define (parse [s : Sexp]) : ExprC
   (match s
@@ -100,29 +89,26 @@
     [(? string? s) (StrV s)]
     [(? symbol? sym) (IdC sym)]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
-    [(list '% (list (? symbol? params)...) '->  body ) (LamC (map IdC (cast params (Listof Symbol))) (parse body))] 
-
+    [(list 'if _ ...)
+     (error 'parse "DRMG4: Invalid syntax for if")] 
+    
+    [(list '% (list (? symbol? params)...) '-> body)
+         (if (has-duplicates? (cast params (Listof Symbol)))
+             (error 'parse "DRMG4: Duplicate function parameters")
+             (LamC (map IdC (cast params (Listof Symbol)))
+                   (parse body)))] 
+ 
     ;desugaring version of local, idk if its do or in, instructions mix them around
     [(list 'local (list (list (? symbol? vars) '= expr) ...) 'in expr2)
      (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (parse-multiple (cast expr (Listof Sexp))))]
     [(list fun args ...) (AppC (parse fun) (map parse args))]
-    [_ (error 'parse "DRMG4: Invalid syntax")]
+    [_ (error 'parse "DRMG4: Invalid syntax")]  
   ))
 
-(check-equal? (parse 4) {NumC 4})
-(check-equal? (parse "test") {StrV "test"})
-(check-equal? (parse 'Hello) {IdC 'Hello})
-(check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumC 10) (NumC 20)))
-(check-equal? (parse '{% (x y) -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
-(check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumC 2) (NumC 3))))
 
-(parse '{if {<= 4 10} 10 20})
+;(parse '{local {{x = 4} {y = {+ 4 9}}} in {* x y}}) 
 
-(parse '{local {{x = 4} {y = {+ 4 9}}} in {* x y}}) 
 
-(parse '{if true 4})
-
-;(parse '{{% (x) -> x} 10})
 ;------- interp helper for multiple arguements ---------
 
 ;Takes in a list of args and a list of functions and it evaluates the args
@@ -177,11 +163,12 @@
           (match* (v1 v2)
             [((NumV a) (NumV b)) (= a b)]
             [((BoolV a) (BoolV b)) (equal? a b)]
-            [((StrV a) (StrV b)) (string=? a b)]
-            [(_ _) #f]))
+            [((StrV a) (StrV b)) (string=? a b)] 
+            [(_ _) #f])) 
          (error 'interp-prim "DRMG4: Unknown primitive operator"))]
 
     [_ (error 'interp-prim "DRMG4: Expected two numbers")]))
+
     
 ; ------------------------------- Interp ------------------------------------------------
 
@@ -198,7 +185,7 @@
      (match result
        [(BoolV #t) (interp ifTrue env)]
        [(BoolV #f) (interp else env)]
-       [_ (error 'interp "DRMG4: condition is not a boolean value")]) 
+       [_ (error 'interp "DRMG4: condition is not a boolean value")])  
 
      ]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
@@ -214,58 +201,91 @@
                    (define new-env (append bindings closure-env))
                    (interp body new-env)]
             
-                  [else (error 'interp "DRMG4: Number of Arguments are not equal" args)])]
+                  [else (error 'interp "DRMG4: Number of Arguments are not equal")])]
  
-                 [(PrimV op) (interp-prim op (interp-args args env))]
+                  [(PrimV op) (interp-prim op (interp-args args env))]
 
                [_ (error 'interp "DRMG4: Attempted to call a non-function")])]
 
-  ))
-
-
-;testing for IF's
- (check-equal?
- (interp (If (IdC 'true) (NumC 10) (NumC 20)) top-env)
- (NumV 10))
-
-(check-equal?
- (interp (If (IdC 'false) (NumC 10) (NumC 20)) top-env)
- (NumV 20))
-
-(check-exn
- (regexp (regexp-quote "DRMG4: condition is not a boolean value"))
- (lambda ()
-   (interp (If (NumC 5) (NumC 10) (NumC 20)) top-env)))
-
-
-
-#;(check-exn
- (regexp "DRMG4: Primitive operators not implemented yet")
- (lambda () (interp (AppC (IdC '+) (list (NumC 2) (NumC 3)))top-env)))
+    ))
 
 ;(define top-env (list (Bind 'true (BoolV #t)) (Bind 'false (BoolV #f)) (Bind 'x {NumV 4})  ))
+;------------------------------------------------------------------------------------ Testing ----------------------------------------------------------
+;------------------------ Look Up Function -------------------
+
+(check-equal?(lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
+(check-exn (regexp (regexp-quote " DRMG4: Binding was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
+
+(check-equal? (lookup '+ top-env)(PrimV '+))
+(check-equal? (lookup 'x (list (Bind 'x (StrV "test")))) (StrV "test"))
+
+;----------------------- Serialize Tests----------------------
+; Test serializing numbers
+(check-equal? (serialize (NumV 5)) "5")
+(check-equal? (serialize (NumV -3)) "-3")
+(check-equal? (serialize (NumV 2.5)) "2.5")
+
+; Test serializing booleans
+(check-equal? (serialize (BoolV #t)) "true")
+(check-equal? (serialize (BoolV #f)) "false")
+
+; Test serializing strings
+(check-equal? (serialize (StrV "hello")) "\"hello\"")
+(check-equal? (serialize (StrV "DRMG")) "\"DRMG\"")
+
+; Test serializing closures
+(check-equal?
+ (serialize (CloV empty (NumV 5) empty))"#<procedure>") 
+
+; Test serializing primitive operators
+(check-equal? (serialize (PrimV '+)) "#<primop>")
+
+
+;----------------------------- top interp -------------------------------
+
+(define (top-interp [s : Sexp]) : String
+  (serialize (interp (parse s) top-env)))  
+
+(check-equal? (top-interp '{if {<= {* 5 2} 11} 10 11}) "10")
+
+ 
+
+;make sure to move ALL yes ALL test cases here... ( Test cases?? what is that?? )
+;---------------------- Parser Test (that we had laying around)---------------------------
+;Basic Test
+(check-equal? (parse 4) {NumC 4})
+(check-equal? (parse "test") {StrV "test"})
+(check-equal? (parse 'Hello) {IdC 'Hello})
+(check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumC 10) (NumC 20)))
+(check-equal? (parse '{% (x y) -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+(check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumC 2) (NumC 3))))
+(check-equal? (parse '{% (x y) -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x))) 
+; Invalid Syntax 
+(check-exn(regexp (regexp-quote "DRMG4: Invalid syntax"))(lambda ()(parse '{})))
+(check-exn(regexp (regexp-quote "DRMG4: Invalid syntax for if"))(lambda ()(parse '{if true 4})))
+;Error
+(check-exn(regexp "DRMG4: Duplicate function parameters")(lambda () (parse '{% (x x) -> x})))
+
+; ------------------------------- Interp Test Cases -----------------------
+;Normal 
 (check-equal? (interp (NumC 5) top-env) (NumV 5)) 
 (check-equal? (interp (IdC 'x) (list (Bind 'x {NumV 4}))) (NumV 4))
-(check-equal?
-  (interp 
-    (AppC (LamC (list (IdC 'x))
-                (IdC 'x))
-          (list (NumC 10)))
-    {list (Bind 'x {NumV 10})})
-  (NumV 10))
-
-(check-equal?
-  (interp
-    (AppC
-      (LamC (list (IdC 'y))
-            (IdC 'x))
-      (list (NumC 10)))
-    (list (Bind 'x {NumV 4}))) 
-  (NumV 4))
-
+;String
+(check-equal? (interp  (StrV "hello") top-env)(StrV "hello"))
+;AppC
+(check-equal?(interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 10))) {list (Bind 'x {NumV 10})})  (NumV 10))
+(check-equal?(interp(AppC(LamC (list (IdC 'y))(IdC 'x))(list (NumC 10)))(list (Bind 'x {NumV 4})))(NumV 4))
+;IF 
 (check-equal? (interp (If {AppC (IdC '<=) {list {NumC 2} {NumC 3}}} {NumC 4} {NumC 21}) top-env) {NumV 4})
 (check-equal? (interp (If {AppC (IdC '<=) {list {NumC 10} {NumC 0}}} {NumC 2} {NumC 100}) top-env) {NumV 100})
 (check-equal? (interp (If (IdC 'true) (NumC 1) (NumC 2)) top-env) {NumV 1})
+
+(check-equal?(interp (If (IdC 'true) (NumC 10) (NumC 20)) top-env)(NumV 10))
+
+(check-equal?(interp (If (IdC 'false) (NumC 10) (NumC 20)) top-env)(NumV 20))
+
+(check-exn(regexp (regexp-quote "DRMG4: condition is not a boolean value"))
+ (lambda ()(interp (If (NumC 5) (NumC 10) (NumC 20)) top-env)))
 
 ;testing local
 (check-equal? (interp (parse '{local {{x = 4} {y = {+ 4 9}}} in {* x y}}) top-env) {NumV 52})
@@ -273,20 +293,10 @@
 ;testing out of scope vars
 (check-exn #rx"Binding was not found" (lambda () (interp (parse '{local {{x = 4} {y = {+ 4 x}}} in {* x y}}) top-env)))
 
+;Extra 
+(check-exn(regexp (regexp-quote "DRMG4: Number of Arguments are not equal"))(lambda ()(interp (parse'{{% (x y) -> x} 5}) top-env)))
+(check-exn(regexp "DRMG4: Attempted to call a non-function")(lambda ()(interp (parse'{5 10}) top-env)))
 
-;----------------------------- top interp -----------------
-
-(define (top-interp [s : Sexp]) : String
-  (serialize (interp (parse s) top-env))) 
-
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
-
- 
-
-;make sure to move ALL yes ALL test cases here... ( Test cases?? what is that?? )
 
 
 ;---------------- Interp Prims Test Cases -------------------------
@@ -303,10 +313,11 @@
 (check-equal? (interp-prim '<= (list (NumV 5) (NumV 3))) (BoolV #f))
 (check-equal? (interp-prim '<= (list (NumV 4) (NumV 4))) (BoolV #t))
 
-;add test cases for rest of prim ops
+(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
+(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
+(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
+(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
 
-
-  
 
 ;checking primitive operator errors 
 (check-exn (regexp (regexp-quote "DRMG4: Division by zero"))
@@ -367,103 +378,59 @@
  
 ;Checks for substring function
 ; Substring tests
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 4)))
-              (StrV "ell"))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 5)))
-              (StrV "hello"))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 0)))
-              (StrV ""))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 2)))
-              (StrV ""))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 5)))
-              (StrV "llo"))
+(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 4)))(StrV "ell"))
+(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 5)))(StrV "hello"))
+(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 0))) (StrV ""))
+(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 2))) (StrV ""))
+(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 5))) (StrV "llo"))
   
 ; Negative starting index
-(check-exn
- (regexp (regexp-quote "DRMG4: Invalid substring indices"))
- (lambda ()
-   (interp-prim 'substring (list (StrV "hello") (NumV -1) (NumV 2)))))
+(check-exn(regexp (regexp-quote "DRMG4: Invalid substring indices"))
+ (lambda ()(interp-prim 'substring (list (StrV "hello") (NumV -1) (NumV 2)))))
  
 ; Negative ending index
-(check-exn
- (regexp (regexp-quote "DRMG4: Invalid substring indices"))
- (lambda ()
-   (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV -1)))))
+(check-exn(regexp (regexp-quote "DRMG4: Invalid substring indices"))
+ (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV -1)))))
 
 ; Ending index exceeds string length
-(check-exn
- (regexp (regexp-quote "DRMG4: Range exceeds string length"))
- (lambda ()
-   (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 6)))))
+(check-exn(regexp (regexp-quote "DRMG4: Range exceeds string length"))
+ (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 6)))))
 
 ; Ending index is less than starting index
-(check-exn
- (regexp (regexp-quote "DRMG4: Second input is less than first input"))
- (lambda ()
+(check-exn(regexp (regexp-quote "DRMG4: Second input is less than first input"))(lambda ()
    (interp-prim 'substring (list (StrV "hello") (NumV 4) (NumV 2)))))
 
-; Wrong number of arguments
-(check-exn
- (regexp (regexp-quote "DRMG4: Unknown primitive operator"))
- (lambda () 
-   (interp-prim 'substring (list (StrV "hello") (NumV 1)))))
+; Wrong number of arguments ---------- This is WRONG ------------------------
+(check-exn(regexp (regexp-quote "DRMG4: Unknown primitive operator"))
+ (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1)))))
 
-(check-exn
- (regexp (regexp-quote "DRMG4: Unknown primitive operator"))
- (lambda () 
-   (interp-prim 'function (list (StrV "hello") (NumV 1) (NumV 3)))))    
+(check-exn(regexp (regexp-quote "DRMG4: Unknown primitive operator"))
+ (lambda () (interp-prim 'function (list (StrV "hello") (NumV 1) (NumV 3)))))
+
 ;; equal? — numbers
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5)))
-              (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 6)))
-              (BoolV #f))
+(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5)))(BoolV #t))
+(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 6)))(BoolV #f))
 
 ;; equal? — booleans
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #t)))
-              (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f)))
-              (BoolV #f))
+(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #t)))(BoolV #t))
+(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f)))(BoolV #f))
 
 ;; equal? — strings
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello")))
-              (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "world")))
-              (BoolV #f))
+(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello")))(BoolV #t))
+(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "world")))(BoolV #f))
 
 ;; equal? — different types
-(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5")))
-              (BoolV #f))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (NumV 1)))
-              (BoolV #f))
+(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5")))(BoolV #f))
+(check-equal? (interp-prim 'equal? (list (BoolV #t) (NumV 1)))(BoolV #f))
 
 ;; equal? — closures and primitive operators
-(check-equal?
- (interp-prim 'equal?
-              (list (CloV '() (NumC 5) top-env)
-                    (CloV '() (NumC 5) top-env)))
- (BoolV #f))
+(check-equal?(interp-prim 'equal? 
+(list (CloV '() (NumC 5) top-env)(CloV '() (NumC 5) top-env)))(BoolV #f))
 
-(check-equal? (interp-prim 'equal? (list (PrimV '+) (PrimV '+)))
-              (BoolV #f))
-
+(check-equal? (interp-prim 'equal? (list (PrimV '+) (PrimV '+))) (BoolV #f))
 ;; Wrong number of arguments
-(check-exn
- (regexp "Expected two numbers")
+(check-exn(regexp "Expected two numbers")
  (lambda () (interp-prim 'equal? (list (NumV 5)))))
 
-(check-exn
- (regexp "Expected two numbers")
- (lambda () (interp-prim 'equal? '())))
+(check-exn(regexp "Expected two numbers")(lambda () (interp-prim 'equal? '())))
 
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
-
-(check-exn
- (regexp "DRMG4: Expected two numbers")
- (lambda () (interp-prim 'equal? (list (NumV 5)))))
-
-(check-exn
- (regexp "DRMG4: Expected two numbers")
- (lambda () (interp-prim 'equal? '())))
