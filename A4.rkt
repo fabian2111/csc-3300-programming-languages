@@ -2,8 +2,7 @@
 (require typed/rackunit)
 
 ; --------------- Type Definitions ----------------------
-;added local but may change it later
-(define-type ExprC (U NumC NumV IdC StrV If LamC AppC LocalC))
+(define-type ExprC (U NumC NumV IdC StrV If LamC AppC))
 (define-type Value (U NumV BoolV StrV CloV PrimV))
 (define-type Binding Bind)
 (define-type Env (Listof Bind))
@@ -19,8 +18,6 @@
 (struct PrimV ([op : Symbol]) #:transparent)
 (struct BoolV ([boo : Boolean]) #:transparent)
 (struct CloV ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
-;found out that we have to desugar it
-(struct LocalC ([ids : (Listof Symbol)] [exprs : (Listof ExprC)] [body : ExprC]) #:transparent)
 (struct Bind ([name : Symbol] [val : Value]) #:transparent)
 
 ;(struct local 
