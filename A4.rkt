@@ -163,7 +163,7 @@
      
     [_ (error 'interp-prim "DRMG4: Expected two numbers")]))
  
-
+ 
     
 
 ; checking primitive operators 
