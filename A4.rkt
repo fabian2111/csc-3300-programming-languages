@@ -2,12 +2,11 @@
 (require typed/rackunit)
 
 ; --------------- Type Definitions ----------------------
-(define-type ExprC (U NumC NumV IdC StrV If LamC AppC))
+;added local but may change it later
+(define-type ExprC (U NumC NumV IdC StrV If LamC AppC LocalC))
 (define-type Value (U NumV BoolV StrV CloV PrimV))
 (define-type Binding Bind)
 (define-type Env (Listof Bind))
-
-;(define-type Value (U Real Boolean String)
 
 ;-------------------------- Struct Definitions ---------------------
 (struct NumV ([num : Real]) #:transparent)
@@ -20,6 +19,8 @@
 (struct PrimV ([op : Symbol]) #:transparent)
 (struct BoolV ([boo : Boolean]) #:transparent)
 (struct CloV ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
+;found out that we have to desugar it
+(struct LocalC ([ids : (Listof Symbol)] [exprs : (Listof ExprC)] [body : ExprC]) #:transparent)
 (struct Bind ([name : Symbol] [val : Value]) #:transparent)
 
 ;(struct local 
@@ -28,8 +29,13 @@
 
 ;(define top-env empty)
 
+;all prim operations should be added, nvm need to add error
 
-(define top-env (list (Bind 'true (BoolV #t))(Bind 'false (BoolV #f)) (Bind '+ (PrimV '+)) (Bind 'x (NumV 4))))
+(define top-env (list (Bind 'true (BoolV #t)) (Bind 'false (BoolV #f))
+                      (Bind '+ (PrimV '+)) (Bind '- (PrimV '-))
+                      (Bind '* (PrimV '*)) (Bind '/ (PrimV '/))
+                      (Bind '<= (PrimV '<=)) (Bind 'substring (PrimV 'substring))
+                      (Bind 'strlen (PrimV 'strlen)) (Bind 'equal? (PrimV 'equal?))))
 (define extend-env cons)
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -76,9 +82,18 @@
 (check-equal?(lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
 (check-exn (regexp (regexp-quote " DRMG4: Binding was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
 
-(check-equal? (lookup '+ top-env)(PrimV '+)) 
+(check-equal? (lookup '+ top-env)(PrimV '+))
+(check-equal? (lookup 'x (list (Bind 'x (StrV "test")))) (StrV "test"))
 
 ; -----------------------------------Parser---------------------------------------------------
+
+(define (parse-multiple [exprs : (Listof Sexp)]) : (Listof ExprC)
+  (match exprs
+    ['() '()]
+    [(cons f r) (cons (parse f) (parse-multiple r))]
+  ))
+
+
 ;Takes in a Sexp and parses it into an ExprC
 
 ;	{ local [‹id›=‹expr›]* do ‹expr› }
@@ -88,9 +103,13 @@
     [(? string? s) (StrV s)]
     [(? symbol? sym) (IdC sym)]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
-    [(list '% (list (? symbol? params)...) '->  body ) (LamC (map IdC (cast params (Listof Symbol))) (parse body))]
-   ; [(list 'local (
+    [(list '% (list (? symbol? params)...) '->  body ) (LamC (map IdC (cast params (Listof Symbol))) (parse body))] 
+
+    ;desugaring version of local, idk if its do or in, instructions mix them around
+    [(list 'local (list (list (? symbol? vars) '= expr) ...) 'in expr2)
+     (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (parse-multiple (cast expr (Listof Sexp))))]
     [(list fun args ...) (AppC (parse fun) (map parse args))]
+    [_ (error "catch all error")]
   ))
 
 (check-equal? (parse 4) {NumC 4})
@@ -99,6 +118,9 @@
 (check-equal? (parse '{if true 10 20})(If (IdC 'true)(NumC 10) (NumC 20)))
 (check-equal? (parse '{% (x y) -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
 (check-equal?(parse '{+ 2 3})(AppC (IdC '+)(list (NumC 2) (NumC 3))))
+(parse '{local {{x = 4} {y = {+ 4 9}}} in {* x y}})
+
+(parse '{if true 4})
 
 ;(parse '{{% (x) -> x} 10})
 ;------- interp helper ---------
@@ -159,6 +181,11 @@
 (check-equal? (interp-prim '<= (list (NumV 5) (NumV 3))) (BoolV #f))
 (check-equal? (interp-prim '<= (list (NumV 4) (NumV 4))) (BoolV #t))
 
+;add test cases for rest of prim ops
+
+
+  
+
 ;checking primitive operator errors 
 (check-exn (regexp (regexp-quote "DRMG4: Division by zero"))
  (lambda ()
@@ -196,31 +223,25 @@
 (check-equal? (interp-prim 'strlen (list (StrV "hello"))) (NumV 5))
 (check-equal? (interp-prim 'strlen (list (StrV ""))) (NumV 0))
 
-;
 
 ; ------------------------------- Interp ------------------------------------------------
-#;(define (interp [e : ExprC] [env : Env]) : Value
-  (match e
-    [(IdC s) (lookup s env)]
-    [(NumC n) (NumV n)]
-    [(StrV s) (StrV s)]
-    [(LamC args body) (CloV (map IdC-sym args) body env)]
-    [(AppC func args)
-     (define fundef (interp func env))
-           (cond
-             [(equal? (length (CloV-args fundef)) (length args))
-                (define values (interp-args args env))
-               (interp (CloV-body fundef) values)]
-            
-                [else (error 'interp "DRMG3: Number of Arguments are not equal, got ~e" args)])]
 
-  ))
+;(define (interp-if [condition : ExprC] 
 
 (define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(IdC s) (lookup s env)]
     [(NumC n) (NumV n)]
     [(StrV s) (StrV s)]
+    
+    [(If condition ifTrue else)
+     (define result (interp condition env))
+     (match result
+       [(BoolV #t) (interp ifTrue env)]
+       [(BoolV #f) (interp else env)]
+       [_ (error 'interp "DRMG4: condition is not a boolean value")])
+
+     ]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
     [(AppC func args)
      (define fundef (interp func env))
@@ -234,26 +255,27 @@
                    (define new-env (append bindings closure-env))
                    (interp body new-env)]
             
-                  [else (error 'interp "DRMG3: Number of Arguments are not equal" args)])]
-               
-               [(PrimV op) (error 'interp "DRMG4: Primitive operators not implemented yet")]
+                  [else (error 'interp "DRMG4: Number of Arguments are not equal" args)])]
+ 
+                 [(PrimV op) (interp-prim op (interp-args args env))]
+
                [_ (error 'interp "DRMG4: Attempted to call a non-function")])
              ]
 
   ))
-(check-exn
+#;(check-exn
  (regexp "DRMG4: Primitive operators not implemented yet")
- (lambda () (interp (AppC (IdC '+) (list (NumC 2) (NumC 3)))top-env))) 
+ (lambda () (interp (AppC (IdC '+) (list (NumC 2) (NumC 3)))top-env)))
 
 ;(define top-env (list (Bind 'true (BoolV #t)) (Bind 'false (BoolV #f)) (Bind 'x {NumV 4})  ))
 (check-equal? (interp (NumC 5) top-env) (NumV 5)) 
-(check-equal? (interp (IdC 'x) top-env)(NumV 4))
+(check-equal? (interp (IdC 'x) (list (Bind 'x {NumV 4}))) (NumV 4))
 (check-equal?
   (interp 
     (AppC (LamC (list (IdC 'x))
                 (IdC 'x))
           (list (NumC 10)))
-    top-env)
+    {list (Bind 'x {NumV 10})})
   (NumV 10))
 
 (check-equal?
@@ -262,15 +284,25 @@
       (LamC (list (IdC 'y))
             (IdC 'x))
       (list (NumC 10)))
-    top-env) 
+    (list (Bind 'x {NumV 4}))) 
   (NumV 4))
 
- 
+(check-equal? (interp (If {AppC (IdC '<=) {list {NumC 2} {NumC 3}}} {NumC 4} {NumC 21}) top-env) {NumV 4})
+(check-equal? (interp (If {AppC (IdC '<=) {list {NumC 10} {NumC 0}}} {NumC 2} {NumC 100}) top-env) {NumV 100})
+(check-equal? (interp (If (IdC 'true) (NumC 1) (NumC 2)) top-env) {NumV 1})
 
-#;[true (interp (subst-args (FundefC-args fundef) values (FundefC-body fundef)) env)]
+;testing local
+(check-equal? (interp (parse '{local {{x = 4} {y = {+ 4 9}}} in {* x y}}) top-env) {NumV 52})
 
-#;(define (top-interp [s : Sexp]) : String
+;testing out of scope vars
+(check-exn #rx"Binding was not found" (lambda () (interp (parse '{local {{x = 4} {y = {+ 4 x}}} in {* x y}}) top-env)))
+
+
+(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
+
+
+;make sure to move ALL yes ALL test cases here...
 
 
 
