@@ -125,7 +125,7 @@
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
 
-(define (interp-prim [op : Symbol] [args : (Listof Value)]) : Value
+#;(define (interp-prim [op : Symbol] [args : (Listof Value)]) : Value
   (match args
    [(list (NumV a) (NumV b))
      (cond
@@ -178,6 +178,73 @@
          (error 'interp-prim "DRMG4: Unknown primitive operator"))]
 
     [_ (error 'interp-prim "DRMG4: Expected two numbers")]))
+
+(define (interp-prim [op : Symbol] [args : (Listof Value)]) : Value
+  (match op
+    ['+
+     (match args
+       [(list (NumV a) (NumV b)) (NumV (+ a b))]
+       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+
+    ['-
+     (match args
+       [(list (NumV a) (NumV b)) (NumV (- a b))]
+       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+
+    ['*
+     (match args
+       [(list (NumV a) (NumV b)) (NumV (* a b))]
+       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+
+    ['/
+     (match args
+       [(list (NumV a) (NumV b))
+        (if (zero? b)
+            (error 'interp-prim "DRMG4: Division by zero")
+            (NumV (/ a b)))]
+       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+
+    ['<=
+     (match args
+       [(list (NumV a) (NumV b)) (BoolV (<= a b))]
+       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+
+    ['strlen
+     (match args
+       [(list (StrV s)) (NumV (string-length s))]
+       [_ (error 'interp-prim "DRMG4: strlen expects one string")])]
+
+    ['substring
+     (match args
+       [(list (StrV s) (NumV n1) (NumV n2))
+        (cond
+          [(not (and (exact-nonnegative-integer? n1)
+                     (exact-nonnegative-integer? n2)))
+           (error 'interp-prim "DRMG4: Invalid substring indices")]
+          [(< n2 n1)
+           (error 'interp-prim "DRMG4: Second input is less than first input")] 
+          [(> n2 (string-length s))
+           (error 'interp-prim "DRMG4: Range exceeds string length ")]
+          [else (StrV (substring s n1 n2))])]
+       [_ (error 'interp-prim "DRMG4: Invalid substring arguments")])] 
+
+    ['equal?
+     (match args
+       [(list v1 v2)
+        (BoolV
+         (match* (v1 v2)
+           [((NumV a) (NumV b)) (= a b)]
+           [((BoolV a) (BoolV b)) (equal? a b)]
+           [((StrV a) (StrV b)) (string=? a b)]
+           [(_ _) #f]))]
+       [_ (error 'interp-prim "DRMG4: equal? expects two arguments")])]
+
+    ['error
+     (match args
+       [(list (StrV s)) (error s)]
+       [_ (error 'interp-prim "DRMG4: error expects one string argument")])]
+
+    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")])) 
 
     
 ; ------------------------------- Interp ------------------------------------------------
