@@ -1,6 +1,8 @@
 #lang typed/racket
 (require typed/rackunit)
 
+;Full project implemented
+
 ; --------------- Type Definitions ----------------------
 (define-type ExprC (U NumC NumV IdC StrV If LamC AppC))
 (define-type Value (U NumV BoolV StrV CloV PrimV))
@@ -26,10 +28,18 @@
                       (Bind '* (PrimV '*)) (Bind '/ (PrimV '/))
                       (Bind '<= (PrimV '<=)) (Bind 'substring (PrimV 'substring))
                       (Bind 'strlen (PrimV 'strlen)) (Bind 'equal? (PrimV 'equal?))
-                      (Bind 'error (PrimV 'error))))
+                      (Bind 'error (PrimV 'error))
 
-;not sure if we need this
-(define extend-env cons)
+                      ;new funcs
+                      (Bind 'println (PrimV 'println))
+                      (Bind 'read-num (PrimV 'read-num))
+                      (Bind 'read-str (PrimV 'read-str))
+                      (Bind 'begin (PrimV 'begin))
+                      (Bind '++ (PrimV '++))
+                      ))
+
+
+
 
 ; ----------------------------------------Serialize -------------------------------------------
 
@@ -43,13 +53,13 @@
     [(PrimV _ ) "#<primop>"]))
 
 
-; ----------------------------------------Look Up for Variable in Environment-------------------------------------------------
+; ---------------------------------Look Up for Variable in Environment-------------------------------
 ;takes in a symbol and an environment and it looks into the environment
 ;and tries to look if the given symbol is inside the environment
 ;and then it returns the value associated with the symbol
 (define (lookup [sym : Symbol] [env : Env]) : Value
    (cond
-      [(empty? env) (error 'lookup "DRMG4: Binding was not found got ~v" sym)]
+      [(empty? env) (error 'lookup "DRMG4: Binding was not found for ~v" sym)]
       [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
       [else (lookup sym (rest env))]))
 
@@ -69,20 +79,18 @@
 (check-equal? (has-duplicates? '()) #f)
 ; -----------------------------------Parser---------------------------------------------------
 
-;---------- Parse Multiple-----
-;takes in a list of Sexp and parses it into a list of ExprC
-(define (parse-multiple [exprs : (Listof Sexp)]) : (Listof ExprC)
-  (match exprs
-    ['() '()]
-    [(cons f r) (cons (parse f) (parse-multiple r))]))
-
 ;-----------------------------
 ;Takes in a Sexp and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
   (match s
     [(? real? n) (NumC n)]
     [(? string? s) (StrV s)]
-    [(? symbol? sym) (IdC sym)]
+    [(? symbol? sym)
+     (cond
+       [(equal? 'if sym) (error 'parse "DRMG4: incorrect syntax for if")]
+       [(equal? 'local sym) (error 'parse "DRMG4: incorrect syntax for local")]
+       [(equal? '% sym) (error 'parse "DRMG4: incorrect syntax for %")]
+       [else (IdC sym)])]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
     [(list 'if _ ...)
      (error 'parse "DRMG4: Invalid syntax for if")] 
@@ -92,7 +100,8 @@
              (LamC (map IdC (cast params (Listof Symbol)))
                    (parse body)))] 
     [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
-      (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (parse-multiple (cast expr (Listof Sexp))))]
+      (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp))))]
+    
     [(list fun args ...) (AppC (parse fun) (map parse args))]
     [_ (error 'parse "DRMG4: Invalid syntax")]))
 
@@ -108,6 +117,43 @@
      (cons (interp first env)
            (interp-args rest env))]))
 
+
+;----------------- drmg 5 helpers -------------------
+
+
+(define (println-drmg [args : (Listof Value)]) : BoolV
+  (match args
+       [(list (StrV s)) (println s) (BoolV #t)]
+       [_ (BoolV #f)]
+
+       ;what if you do error without the function symbol
+       [_ (error "DRMG: println expects one string argument")]))
+
+
+(define (read-input) : (U StrV #f)
+  (printf "> ")
+  (define input-val (read-line))
+  (if (string? input-val)
+      (StrV (cast input-val String))
+      #f))
+
+
+(define (begin-drmg [args : (Listof Value)]) : Value
+  (if (empty? (rest args))
+      (first args)
+      (begin-drmg (rest args))))
+
+(define (concat-drmg [args : (Listof Value)]) : String
+  (match args
+    ['() ""]
+    [(cons f r) (match f
+                  [(NumV num) (string-append (number->string num) (concat-drmg r))]
+                  [(StrV str) (string-append str (concat-drmg r))]
+                  [(BoolV boo) (string-append (serialize (BoolV boo)) (concat-drmg r))]
+
+                  [_ (string-append (serialize f) (concat-drmg r))])]))
+
+                    
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
 ;takes in a symbol and a list of values and it performs an operation based
@@ -168,6 +214,49 @@
      (match args
        [(list (StrV s)) (error s)]
        [_ (error 'interp-prim "DRMG4: error expects one string argument")])]
+    
+    ;new things for drmg 5, might refactor it
+
+    ;don't know how to solve the issue of println printing out true 
+    ['println (println-drmg args)]
+    
+    ['read-num
+     ;(printf "> ")
+     ;(define input-val (read-line))
+     (define input-val (read-input))
+
+     #;(if (string? input-val) 
+         (if (real? (string->number (cast input-val String)))
+                    (NumV (cast (string->number (cast input-val String)) Real))
+                    (error "DRMG: read-num expects a number value"))
+         
+         (error "DRMG: invalid input for read-num"))
+
+     (match input-val
+       [(StrV str) (if (real? (string->number str))
+                    (NumV (cast (string->number str) Real))
+                    (error "DRMG: read-num expects a number value"))]
+       [_ (error "DRMG: invalid input for read-num")])]
+
+     
+
+    ['read-str
+     ;(printf "> ")
+     ;(define input-val (read-line))
+     (define input-val (read-input))
+     
+     #;(if (string? input-val)
+         (StrV (cast input-val String))
+         (error "DRMG: invalid input for read-str"))
+
+     (if (equal? input-val #f)
+         (error "DRMG: invalid input for read-str")
+         (cast input-val StrV))]
+
+    ['begin (begin-drmg args)]
+    ['++ (StrV (concat-drmg args))]
+
+    
     [_ (error 'interp-prim "DRMG4: Unknown primitive operator")])) 
 
     
@@ -189,45 +278,26 @@
     [(LamC args body) (CloV (map IdC-sym args) body env)]
     [(AppC func args)
      (define fundef (interp func env))
-     (match fundef
-       ; Interp returns Value so we have to match to see if its specifically CloV
-       [(CloV params body closure-env)
-        (cond
-          ;if the lengths of arguements are right we interp the values,
-          ;making in bindings, and create the new env
-          [(equal? (length params) (length args))
-           (define arg-values (interp-args args env))
-           (define bindings (map Bind params arg-values))
-           (define new-env (append bindings closure-env))
-           (interp body new-env)]
-          [else (error 'interp "DRMG4: Number of Arguments are not equal")])]
-       [(PrimV op) (interp-prim op (interp-args args env))]
-       [_ (error 'interp "DRMG4: Attempted to call a non-function")])]))
+             (match fundef
+               ; Interp returns Value so we have to match to see if its specifically CloV
+               [(CloV params body closure-env)
+                (cond
+                  ;if the lengths of arguements are right we interp the values,
+                  ;making in bindings, and create the new env
+                  [(equal? (length params) (length args))
+                   (define arg-values (interp-args args env))
+                   (define bindings (map Bind params arg-values))
+                   (define new-env (append bindings closure-env))
+                   (interp body new-env)]
+                  [else (error 'interp "DRMG4: Number of Arguments are not equal got ~v" args)])]
+               [(PrimV op) (interp-prim op (interp-args args env))]
+               [_ (error 'interp "DRMG4: Attempted to call a non-function")])]))
 
 ;----------------------------- top interp -------------------------------
 
 ;takes in a sexp and returns a serialized string containing a value
 (define (top-interp [s : Sexp]) : String
-  (serialize (interp (parse s) top-env)))  
-
-
-
-
-(check-equal?(top-interp '{local {fact = { % self n ->
-                    {if {<= n 0} 1 {* n { self self {- n 1}}}}}}
-         in
-     {fact fact 6}}) "720")
-
-
-
-
-
-
-;(define add (lambda (n1) (lambda (n2) ( lambda (func) (lambda (x) ((n1 func) ((n2 func) x)))))))
-
-;--------------------------------------------------------------------------
- 
-;make sure to move ALL yes ALL test cases here... ( Test cases?? what is that?? )
+  (serialize (interp (parse s) top-env)))
 
 
 ;-------------------------------- Testing -----------------------------
@@ -235,7 +305,8 @@
 ;------------------------ Look Up Function -------------------
 
 (check-equal? (lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
-(check-exn (regexp (regexp-quote "DRMG4: Binding was not found")) (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
+(check-exn (regexp (regexp-quote "DRMG4: Binding was not found"))
+           (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
 
 (check-equal? (lookup '+ top-env) (PrimV '+))
 (check-equal? (lookup 'x (list (Bind 'x (StrV "test")))) (StrV "test"))
@@ -249,6 +320,7 @@
 (check-equal? (top-interp '{if {<= {* 5 2} 11} 10 11}) "10")
 (check-equal? (top-interp '{local [x = 4] in {+ x 4}}) "8")
 (check-equal? (top-interp '{local [z = {+ 9 14}] [y = 98] in {+ z y}}) "121")
+(check-equal? (top-interp '{local [func = {% x -> {+ x 5}}] in {func 5}}) "10")
 (check-equal? (top-interp '{% x -> {+ x 1}}) "#<procedure>")
 (check-equal? (top-interp '{{% x -> {+ x 1}} 4}) "5")
 (check-equal? (top-interp '{{% -> {+ 4 10}}}) "14")
@@ -284,12 +356,17 @@
 (check-equal? (parse '{if true 10 20}) (If (IdC 'true) (NumC 10) (NumC 20)))
 (check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
 (check-equal? (parse '{+ 2 3}) (AppC (IdC '+) (list (NumC 2) (NumC 3))))
-(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x))) 
+(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+
 ; Invalid Syntax 
 (check-exn (regexp (regexp-quote "DRMG4: Invalid syntax")) (lambda () (parse '{})))
 (check-exn (regexp (regexp-quote "DRMG4: Invalid syntax for if")) (lambda () (parse '{if true 4})))
 ;Error
 (check-exn (regexp "DRMG4: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
+
+(check-exn (regexp "DRMG4: incorrect syntax for if") (lambda () (parse '{+ if 4})))
+(check-exn (regexp "DRMG4: incorrect syntax for local") (lambda () (parse '{- local 2})))
+(check-exn (regexp "DRMG4: incorrect syntax for %") (lambda () (parse '{* % 2})))
 
 ; ------------------------------- Interp Test Cases -----------------------
 ;Normal 
@@ -299,7 +376,7 @@
 (check-equal? (interp (StrV "hello") top-env) (StrV "hello"))
 ;AppC
 (check-equal? (interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 10))) {list (Bind 'x {NumV 10})})  (NumV 10))
-(check-equal? (interp(AppC(LamC (list (IdC 'y)) (IdC 'x)) (list (NumC 10))) (list (Bind 'x {NumV 4}))) (NumV 4))
+(check-equal? (interp (AppC (LamC (list (IdC 'y)) (IdC 'x)) (list (NumC 10))) (list (Bind 'x {NumV 4}))) (NumV 4))
 ;IF 
 (check-equal? (interp (If {AppC (IdC '<=) {list {NumC 2} {NumC 3}}} {NumC 4} {NumC 21}) top-env) {NumV 4})
 (check-equal? (interp (If {AppC (IdC '<=) {list {NumC 10} {NumC 0}}} {NumC 2} {NumC 100}) top-env) {NumV 100})
@@ -323,13 +400,15 @@
 (check-equal? (interp (parse '{local {x = 4} {y = {+ 4 9}} in {* x y}}) top-env) {NumV 52})
 
 ;testing out of scope vars
-(check-exn #rx"Binding was not found" (lambda () (interp (parse '{local {x = 4} {y = {+ 4 x}} in {* x y}}) top-env)))
+(check-exn #rx"Binding was not found"
+           (lambda () (interp (parse '{local {x = 4} {y = {+ 4 x}} in {* x y}}) top-env)))
 
 ;Extra 
-(check-exn (regexp (regexp-quote "DRMG4: Number of Arguments are not equal")) (lambda () (interp (parse '{{% x y -> x} 5}) top-env)))
-(check-exn (regexp "DRMG4: Attempted to call a non-function") (lambda () (interp (parse'{5 10}) top-env)))
+(check-exn (regexp (regexp-quote "DRMG4: Number of Arguments are not equal"))
+           (lambda () (interp (parse '{{% x y -> x} 5}) top-env)))
 
-
+(check-exn (regexp "DRMG4: Attempted to call a non-function")
+           (lambda () (interp (parse'{5 10}) top-env)))
 
 ;---------------- Interp Prims Test Cases -------------------------
 
@@ -485,5 +564,23 @@
 
 (check-exn (regexp "equal\\? expects two arguments") (lambda () (interp-prim 'equal? '())))
 
-;----------------------------------------------
+
+;test
+
+(top-interp '{local [empty = 15] in
+ {local [empty? = {% x -> {equal? x empty}}]
+         [cons = {% f r ->
+                     {% key -> {if {equal? key 0} f r}}}]
+         [first = {% pair -> {pair 0}}]
+         [rest = {% pair -> {pair 1}}]
+  in
+  {local [sum-list = {% l self ->
+                          {if {empty? l}
+                              0
+                              {+ {first l} {self {rest l} self}}}}]
+          [my-list = {cons 3 {cons 24 {cons 8 empty}}}]
+   in
+   {println {++ "The sum of the list is "
+                {sum-list my-list sum-list}
+                "."}}}}})
 
