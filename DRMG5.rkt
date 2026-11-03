@@ -144,6 +144,9 @@
       (first args)
       (begin-drmg (rest args))))
 
+(check-equal?(begin-drmg (list (NumV 5)))(NumV 5))
+(check-equal?(begin-drmg (list (NumV 5) (NumV 10)))(NumV 10))
+
 (define (concat-drmg [args : (Listof Value)]) : String
   (match args
     ['() ""]
@@ -154,7 +157,28 @@
 
                   [_ (string-append (serialize f) (concat-drmg r))])]))
 
-                    
+
+(check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
+(check-equal? (concat-drmg '())"")
+(check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
+(check-equal?(concat-drmg (list (NumV 42)))"42")
+(check-equal?(concat-drmg (list (BoolV #t)))"true")
+(check-equal?(concat-drmg (list (BoolV #f)))"false")
+(check-equal?(concat-drmg (list (StrV "Hello ") (StrV "World")))"Hello World")
+(check-equal?(concat-drmg (list (StrV "A") (StrV "B") (StrV "C")))"ABC")
+(check-equal?(concat-drmg (list (StrV "Age: ") (NumV 20)))"Age: 20")
+(check-equal?(concat-drmg (list (NumV 5) (StrV " apples")))"5 apples")
+(check-equal?(concat-drmg (list (StrV "Result: ") (BoolV #t)))"Result: true")
+(check-equal?(concat-drmg (list (NumV 10) (StrV " + ") (NumV 5)))"10 + 5")
+(check-equal?
+ (concat-drmg
+  (list (StrV "Player: ")
+        (StrV "Rock")
+        (StrV ", Score: ")
+        (NumV 10)
+        (StrV ", Winner: ")
+        (BoolV #t)))
+ "Player: Rock, Score: 10, Winner: true")
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
 ;takes in a symbol and a list of values and it performs an operation based
@@ -225,7 +249,7 @@
      ;(printf "> ")
      ;(define input-val (read-line))
      (define input-val (read-input))
-
+ 
      #;(if (string? input-val) 
          (if (real? (string->number (cast input-val String)))
                     (NumV (cast (string->number (cast input-val String)) Real))
