@@ -36,6 +36,7 @@
                       (Bind 'read-str (PrimV 'read-str))
                       (Bind 'begin (PrimV 'begin))
                       (Bind '++ (PrimV '++))
+                      (Bind 'random (PrimV 'random))
                       ))
 
 
@@ -198,7 +199,7 @@
            (error 'interp-prim "DRMG4: Second input is less than first input")] 
           [(> n2 (string-length s))
            (error 'interp-prim "DRMG4: Range exceeds string length ")]
-          [else (StrV (substring s n1 n2))])]
+          [else (StrV (substring s n1 n2))])] 
        [_ (error 'interp-prim "DRMG4: Invalid substring arguments")])] 
     ['equal?
      (match args
@@ -255,9 +256,17 @@
 
     ['begin (begin-drmg args)]
     ['++ (StrV (concat-drmg args))]
+    ['random
+ (match args
+   [(list (NumV n))
+    (if (exact-positive-integer? n)
+        (NumV (random (cast n Integer)))
+        (error 'interp-prim "random expects a positive integer"))]
+   [_ (error 'interp-prim "random expects one argument")])]
 
     
-    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")])) 
+    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")]
+    )) 
 
     
 ; ------------------------------- Interp ------------------------------------------------
@@ -280,7 +289,7 @@
      (define fundef (interp func env))
              (match fundef
                ; Interp returns Value so we have to match to see if its specifically CloV
-               [(CloV params body closure-env)
+               [(CloV params body closure-env) 
                 (cond
                   ;if the lengths of arguements are right we interp the values,
                   ;making in bindings, and create the new env
@@ -300,8 +309,58 @@
   (serialize (interp (parse s) top-env)))
 
 
-;-------------------------------- Testing -----------------------------
 
+;------------------------- Mini-Game (Rock Paper Scissors)----------------------
+
+(define Game
+  '{begin
+    {println "Ready to Play Rock Paper Scissors!"}
+    {println "Please enter rock, paper, or scissors:"}
+
+    {local [player = {read-str}]
+     in
+     {local [computer-choice = {random 3}]
+      in
+      {local [computer = {if {equal? computer-choice 0}
+                            "rock"
+                            {if {equal? computer-choice 1}
+                                "paper"
+                                "scissors"}}]
+       in
+       {begin
+         {println {++ "You chose: " player}}
+         {println {++ "The computer chose: " computer}}
+
+         {if {equal? player computer}
+             {println "It's a tie!"}
+             {if {equal? player "rock"}
+                 {if {equal? computer "scissors"}
+                     {println "You win! Rock beats scissors!"}
+                     {println "You lose! Paper beats rock!"}}
+                 {if {equal? player "paper"}
+                     {if {equal? computer "rock"}
+                         {println "You win! Paper beats rock!"}
+                         {println "You lose! Scissors beats paper!"}}
+                     {if {equal? player "scissors"}
+                         {if {equal? computer "paper"}
+                             {println "You win! Scissors beats paper!"}
+                             {println "You lose! Rock beats scissors!"}}
+                         {println "Invalid choice!"}}}}}}}}}})
+
+;(top-interp Game)  
+
+
+
+;-------------------------------- Testing -----------------------------
+; --------------- DRMG 5 Helper Functions ---------
+
+(check-equal? (println-drmg (list (StrV "Hello")))(BoolV #t))
+(check-equal? (println-drmg (list (NumV 5)))(BoolV #f))
+(check-equal?(println-drmg '())(BoolV #f))
+(check-equal?(println-drmg (list (StrV "Hello") (StrV "World")))(BoolV #f))
+
+;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))
+ 
 ;------------------------ Look Up Function -------------------
 
 (check-equal? (lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
@@ -411,9 +470,20 @@
            (lambda () (interp (parse'{5 10}) top-env)))
 
 ;---------------- Interp Prims Test Cases -------------------------
+; New Prim V test cases
+
+(check-exn (regexp "random expects a positive integer") (lambda () (top-interp  '{random -1})))
+(check-exn (regexp "random expects one argument") (lambda () (top-interp  '{random 1 10})))
+
+
+#;(check-true
+ (or (equal? (interp-prim 'random (list (NumV 3))) (NumV 0))
+     (equal? (interp-prim 'random (list (NumV 3))) (NumV 1))
+     (equal? (interp-prim 'random (list (NumV 3))) (NumV 2))
+     (equal? (interp-prim 'random (list (NumV 3))) (NumV 3))))
 
 ; checking primitive operators 
-(check-equal? (interp-prim '+ (list (NumV 2) (NumV 3))) (NumV 5)) 
+(check-equal? (interp-prim '+ (list (NumV 2) (NumV 3))) (NumV 5))  
 (check-equal? (interp-prim '- (list (NumV 10) (NumV 3))) (NumV 7))
 (check-equal? (interp-prim '- (list (NumV 3) (NumV 10))) (NumV -7))
 (check-equal? (interp-prim '* (list (NumV 4) (NumV 3))) (NumV 12))
