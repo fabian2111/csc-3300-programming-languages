@@ -67,7 +67,7 @@
       [else (lookup sym (rest env))]))
 
 
-;------------------------------- Helper func to find duplicate variables ----------------------
+;----------------- Helper func to find duplicate variables and Invalid Variables ----------------------
 
 ;; has-duplicates? checks whether a list contains repeated symbols.
 (define (has-duplicates? [symbols : (Listof Symbol)]) : Boolean
@@ -97,13 +97,13 @@
 (define (valid-id? [s : Sexp]) : Boolean
   (and (symbol? s) (not (member s reserved)) #t))
 
-
-; -----------------------------------Parser---------------------------------------------------
 (define (all-valid-ids? [syms : (Listof Symbol)]) : Boolean
   (cond
     [(empty? syms) #t]
     [(valid-id? (first syms)) (all-valid-ids? (rest syms))]
     [else #f]))
+; -----------------------------------Parser---------------------------------------------------
+
 ;-----------------------------
 ;Takes in a Sexp and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
@@ -117,18 +117,6 @@
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
     [(list 'if _ ...)
      (error 'parse "DRMG: Invalid syntax for if")] 
-    #;[(list '% (? symbol? params) ... '-> body)
-         (if (has-duplicates? (cast params (Listof Symbol)))
-             (error 'parse "DRMG: Duplicate function parameters")
-             (LamC (map IdC (cast params (Listof Symbol)))
-                   (parse body)))] 
-    ;[(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
-    #;[(list 'local (list expr) ... 'in expr2) 
-     (if (has-duplicates? (cast vars (Listof Symbol)))
-         (error 'parse "DRMG: Duplicate variables in local")
-         ;(if (is-primitive? (cast vars (Listof Symbol)))
-             ;(error 'parse "DRMG: Variable is already a primitive value")
-         (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp)))))]
     [(list '% (? symbol? params) ... '-> body)
      (define ps (cast params (Listof Symbol)))
      (cond
@@ -308,7 +296,7 @@
      (match args
        [(list (NumV n))
         (if (exact-positive-integer? n)
-            (NumV (random (cast n Integer)))
+            (NumV (random (cast n Integer))) 
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
     
@@ -355,7 +343,6 @@
   (serialize (interp (parse s) top-env)))
 
 
-
 ;------------------------- Mini-Game (Rock Paper Scissors)----------------------
 
 (define Game
@@ -392,10 +379,8 @@
                              {println "You win! Scissors beats paper!"}
                              {println "You lose! Rock beats scissors!"}}
                          {println "Invalid choice!"}}}}}}}}}})
-
+ 
 ;(top-interp Game)  
-
-
 
 ;-------------------------------- Testing -----------------------------
 ; --------------- DRMG 5 Helper Functions ---------
@@ -528,7 +513,7 @@
 
 (check-exn (regexp "random expects a positive integer") (lambda () (top-interp  '{random -1})))
 (check-exn (regexp "random expects one argument") (lambda () (top-interp  '{random 1 10})))
-
+ 
 
 #;(check-true
  (or (equal? (interp-prim 'random (list (NumV 3))) (NumV 0))
