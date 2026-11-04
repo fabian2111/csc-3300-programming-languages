@@ -62,7 +62,7 @@
 ;and then it returns the value associated with the symbol
 (define (lookup [sym : Symbol] [env : Env]) : Value
    (cond
-      [(empty? env) (error 'lookup "DRMG4: Binding was not found for ~v" sym)]
+      [(empty? env) (error 'lookup "DRMG: Binding was not found for ~v" sym)]
       [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
       [else (lookup sym (rest env))]))
 
@@ -91,11 +91,19 @@
 
       )
 
-  
+(define reserved '(if = local % -> in))
+
+;; Returns #t if s is a symbol that is not a special keyword
+(define (valid-id? [s : Sexp]) : Boolean
+  (and (symbol? s) (not (member s reserved)) #t))
 
 
 ; -----------------------------------Parser---------------------------------------------------
-
+(define (all-valid-ids? [syms : (Listof Symbol)]) : Boolean
+  (cond
+    [(empty? syms) #t]
+    [(valid-id? (first syms)) (all-valid-ids? (rest syms))]
+    [else #f]))
 ;-----------------------------
 ;Takes in a Sexp and parses it into an ExprC
 (define (parse [s : Sexp]) : ExprC
@@ -104,28 +112,44 @@
     [(? string? s) (StrV s)]
     [(? symbol? sym)
      (cond
-       [(equal? 'if sym) (error 'parse "DRMG4: incorrect syntax for if")]
-       [(equal? 'local sym) (error 'parse "DRMG4: incorrect syntax for local")]
-       [(equal? '% sym) (error 'parse "DRMG4: incorrect syntax for %")]
-       [else (IdC sym)])]
+       [(equal? (valid-id? sym) #t) (IdC sym)]  
+       [else (error 'parse "DRMG: Incorrect usage of DRMG syntax")])]
     [(list 'if condition ifTrue ifFalse) (If (parse condition) (parse ifTrue) (parse ifFalse))]
     [(list 'if _ ...)
-     (error 'parse "DRMG4: Invalid syntax for if")] 
-    [(list '% (? symbol? params) ... '-> body)
+     (error 'parse "DRMG: Invalid syntax for if")] 
+    #;[(list '% (? symbol? params) ... '-> body)
          (if (has-duplicates? (cast params (Listof Symbol)))
-             (error 'parse "DRMG4: Duplicate function parameters")
+             (error 'parse "DRMG: Duplicate function parameters")
              (LamC (map IdC (cast params (Listof Symbol)))
                    (parse body)))] 
-    [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
+    ;[(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
+    #;[(list 'local (list expr) ... 'in expr2) 
      (if (has-duplicates? (cast vars (Listof Symbol)))
-         (error 'parse "DRMG5: Duplicate variables in local")
+         (error 'parse "DRMG: Duplicate variables in local")
          ;(if (is-primitive? (cast vars (Listof Symbol)))
-             ;(error 'parse "DRMG5: Variable is already a primitive value")
+             ;(error 'parse "DRMG: Variable is already a primitive value")
          (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp)))))]
+    [(list '% (? symbol? params) ... '-> body)
+     (define ps (cast params (Listof Symbol)))
+     (cond
+       [(not (all-valid-ids? ps))
+        (error 'parse "DRMG: Reserved DRMG word used as parameter")]
+       [(has-duplicates? ps)
+        (error 'parse "DRMG: Duplicate function parameters")]
+       [else (LamC (map IdC ps) (parse body))])]
+
+    [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
+     (define vs (cast vars (Listof Symbol)))
+     (cond
+       [(not (all-valid-ids? vs))
+        (error 'parse "DRMG: Reserved word used as local variable")] 
+       [(has-duplicates? vs)
+        (error 'parse "DRMG: Duplicate variables in local")]
+       [else (AppC (LamC (map IdC vs) (parse expr2))(map parse (cast expr (Listof Sexp))))])] 
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
-    [_ (error 'parse "DRMG4: Invalid syntax")]))
-
+    [_ (error 'parse "DRMG: Invalid syntax")]))
+ 
 
 ;------- interp helper for multiple arguements ---------
 
@@ -206,43 +230,43 @@
     ['+
      (match args
        [(list (NumV a) (NumV b)) (NumV (+ a b))]
-       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+       [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['-
      (match args
        [(list (NumV a) (NumV b)) (NumV (- a b))]
-       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+       [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['*
      (match args
        [(list (NumV a) (NumV b)) (NumV (* a b))]
-       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+       [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['/
      (match args
        [(list (NumV a) (NumV b))
         (if (zero? b)
-            (error 'interp-prim "DRMG4: Division by zero")
+            (error 'interp-prim "DRMG: Division by zero")
             (NumV (/ a b)))]
-       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+       [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['<=
      (match args
        [(list (NumV a) (NumV b)) (BoolV (<= a b))]
-       [_ (error 'interp-prim "DRMG4: Expected two numbers")])]
+       [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['strlen
      (match args
        [(list (StrV s)) (NumV (string-length s))]
-       [_ (error 'interp-prim "DRMG4: strlen expects one string")])]
+       [_ (error 'interp-prim "DRMG: strlen expects one string")])]
     ['substring
      (match args
        [(list (StrV s) (NumV n1) (NumV n2))
         (cond
           [(not (and (exact-nonnegative-integer? n1)
                      (exact-nonnegative-integer? n2)))
-           (error 'interp-prim "DRMG4: Invalid substring indices")]
+           (error 'interp-prim "DRMG: Invalid substring indices")]
           [(< n2 n1)
-           (error 'interp-prim "DRMG4: Second input is less than first input")] 
+           (error 'interp-prim "DRMG: Second input is less than first input")] 
           [(> n2 (string-length s))
-           (error 'interp-prim "DRMG4: Range exceeds string length ")]
+           (error 'interp-prim "DRMG: Range exceeds string length ")]
           [else (StrV (substring s n1 n2))])] 
-       [_ (error 'interp-prim "DRMG4: Invalid substring arguments")])] 
+       [_ (error 'interp-prim "DRMG: Invalid substring arguments")])] 
     ['equal?
      (match args
        [(list v1 v2)
@@ -252,11 +276,11 @@
            [((BoolV a) (BoolV b)) (equal? a b)]
            [((StrV a) (StrV b)) (string=? a b)]
            [(_ _) #f]))]
-       [_ (error 'interp-prim "DRMG4: equal? expects two arguments")])]
+       [_ (error 'interp-prim "DRMG: equal? expects two arguments")])]
     ['error
      (match args
        [(list any) (error 'user-error (serialize any))]
-       [_ (error 'interp-prim "DRMG4: error expects one argument")])]
+       [_ (error 'interp-prim "DRMG: error expects one argument")])]
 
     
     ;new things for drmg 5, might refactor it
@@ -288,7 +312,7 @@
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
     
-    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")])) 
+    [_ (error 'interp-prim "DRMG: Unknown primitive operator")])) 
 
     
 ; ------------------------------- Interp ------------------------------------------------
@@ -305,7 +329,7 @@
      (match result
        [(BoolV #t) (interp ifTrue env)]
        [(BoolV #f) (interp else env)]
-       [_ (error 'interp "DRMG4: condition is not a boolean value")])]
+       [_ (error 'interp "DRMG: condition is not a boolean value")])]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
     [(AppC func args)
      (define fundef (interp func env))
@@ -320,9 +344,9 @@
                    (define bindings (map Bind params arg-values))
                    (define new-env (append bindings closure-env))
                    (interp body new-env)]
-                  [else (error 'interp "DRMG4: Number of Arguments are not equal got ~v" args)])]
+                  [else (error 'interp "DRMG: Number of Arguments are not equal got ~v" args)])]
                [(PrimV op) (interp-prim op (interp-args args env))]
-               [_ (error 'interp "DRMG4: Attempted to call a non-function")])]))
+               [_ (error 'interp "DRMG: Attempted to call a non-function")])]))
 
 ;----------------------------- top interp -------------------------------
 
@@ -384,12 +408,12 @@
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
            (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
 
-;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))
+;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))  
  
 ;------------------------ Look Up Function -------------------
 
 (check-equal? (lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
-(check-exn (regexp (regexp-quote "DRMG4: Binding was not found"))
+(check-exn (regexp (regexp-quote "DRMG: Binding was not found"))
            (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
 
 (check-equal? (lookup '+ top-env) (PrimV '+))
@@ -443,16 +467,20 @@
 (check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
 
 ; Invalid Syntax 
-(check-exn (regexp (regexp-quote "DRMG4: Invalid syntax")) (lambda () (parse '{})))
-(check-exn (regexp (regexp-quote "DRMG4: Invalid syntax for if")) (lambda () (parse '{if true 4})))
+(check-exn (regexp (regexp-quote "DRMG: Invalid syntax")) (lambda () (parse '{})))
+(check-exn (regexp (regexp-quote "DRMG: Invalid syntax for if")) (lambda () (parse '{if true 4})))
 ;Error
-(check-exn (regexp "DRMG4: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
-(check-exn (regexp "DRMG5: Duplicate variables in local") (lambda () (parse '{local [z = {% -> 3}] [z = 9] in z})))
+(check-exn (regexp "DRMG: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
+(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '{local [z = {% -> 3}] [z = 9] in z})))
 
-(check-exn (regexp "DRMG4: incorrect syntax for if") (lambda () (parse '{+ if 4})))
-(check-exn (regexp "DRMG4: incorrect syntax for local") (lambda () (parse '{- local 2})))
-(check-exn (regexp "DRMG4: incorrect syntax for %") (lambda () (parse '{* % 2})))
-
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{+ if 4}))) 
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{- local 2})))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
+(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '(local (z = (% -> 3)) (z = 9) in (z)))))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '(if = 0 1)))) 
+(check-exn (regexp "DRMG: Reserved word used as local variable") (lambda () (parse '(local (local = "") in "World")))) 
+(check-exn (regexp "DRMG: Reserved DRMG word used as parameter") (lambda () (parse '(% if -> 3))))  
 ; ------------------------------- Interp Test Cases -----------------------
 ;Normal 
 (check-equal? (interp (NumC 5) top-env) (NumV 5)) 
@@ -478,7 +506,7 @@
                   (NumC 10) (AppC {IdC 'error}
                                   {list (StrV "custom error")})) top-env)))
 
-(check-exn (regexp (regexp-quote "DRMG4: condition is not a boolean value"))
+(check-exn (regexp (regexp-quote "DRMG: condition is not a boolean value"))
  (lambda () (interp (If (NumC 5) (NumC 10) (NumC 20)) top-env)))
 
 ;testing local
@@ -489,10 +517,10 @@
            (lambda () (interp (parse '{local {x = 4} {y = {+ 4 x}} in {* x y}}) top-env)))
 
 ;Extra 
-(check-exn (regexp (regexp-quote "DRMG4: Number of Arguments are not equal"))
+(check-exn (regexp (regexp-quote "DRMG: Number of Arguments are not equal"))
            (lambda () (interp (parse '{{% x y -> x} 5}) top-env)))
 
-(check-exn (regexp "DRMG4: Attempted to call a non-function")
+(check-exn (regexp "DRMG: Attempted to call a non-function")
            (lambda () (interp (parse'{5 10}) top-env)))
 
 ;---------------- Interp Prims Test Cases -------------------------
@@ -527,7 +555,7 @@
 
 
 ;checking primitive operator errors 
-(check-exn (regexp (regexp-quote "DRMG4: Division by zero"))
+(check-exn (regexp (regexp-quote "DRMG: Division by zero"))
  (lambda ()
    (interp-prim '/ (list (NumV 5) (NumV 0)))))
 
@@ -554,17 +582,17 @@
  (lambda ()
    (interp-prim '<= (list (NumV 2) (StrV "hello")))))
 (check-exn
- (regexp (regexp-quote "DRMG4: Expected two numbers"))
+ (regexp (regexp-quote "DRMG: Expected two numbers"))
  (lambda ()
    (interp-prim '+ (list (NumV 2)))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: Expected two numbers"))
+ (regexp (regexp-quote "DRMG: Expected two numbers")) 
  (lambda ()
    (interp-prim '* (list (NumV 2) (NumV 3) (NumV 4)))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: Unknown primitive operator"))
+ (regexp (regexp-quote "DRMG: Unknown primitive operator"))
  (lambda () 
    (interp-prim '? (list (NumV 2) (NumV 10)))))
 
@@ -580,11 +608,11 @@
    (interp-prim 'error (list (NumV 3)))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: error expects one argument"))
+ (regexp (regexp-quote "DRMG: error expects one argument"))
  (lambda () (interp-prim 'error (list (NumV 3) (StrV "hi")))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: error expects one argument")) (lambda () (interp-prim 'error '())))
+ (regexp (regexp-quote "DRMG: error expects one argument")) (lambda () (interp-prim 'error '())))
 
 ;Checking string length function 
 (check-equal? (interp-prim 'strlen (list (StrV "hello"))) (NumV 5))
@@ -597,7 +625,7 @@
    (interp-prim 'strlen (list (NumV 5)))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: Unknown primitive operator"))
+ (regexp (regexp-quote "DRMG: Unknown primitive operator"))
  (lambda ()
    (interp-prim 'unknown (list (StrV "hello")))))
  
@@ -610,26 +638,26 @@
 (check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 5))) (StrV "llo"))
   
 ; Negative starting index
-(check-exn (regexp (regexp-quote "DRMG4: Invalid substring indices"))
+(check-exn (regexp (regexp-quote "DRMG: Invalid substring indices"))
  (lambda () (interp-prim 'substring (list (StrV "hello") (NumV -1) (NumV 2)))))
  
 ; Negative ending index
-(check-exn (regexp (regexp-quote "DRMG4: Invalid substring indices"))
+(check-exn (regexp (regexp-quote "DRMG: Invalid substring indices"))
  (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV -1)))))
 
 ; Ending index exceeds string length
-(check-exn (regexp (regexp-quote "DRMG4: Range exceeds string length"))
+(check-exn (regexp (regexp-quote "DRMG: Range exceeds string length"))
  (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 6)))))
 
 ; Ending index is less than starting index
-(check-exn (regexp (regexp-quote "DRMG4: Second input is less than first input")) (lambda ()
+(check-exn (regexp (regexp-quote "DRMG: Second input is less than first input")) (lambda ()
    (interp-prim 'substring (list (StrV "hello") (NumV 4) (NumV 2)))))
 
 ; Wrong number of arguments
 (check-exn (regexp "Invalid substring arguments")
  (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1)))))
 
-(check-exn(regexp (regexp-quote "DRMG4: Unknown primitive operator"))
+(check-exn(regexp (regexp-quote "DRMG: Unknown primitive operator"))
  (lambda () (interp-prim 'function (list (StrV "hello") (NumV 1) (NumV 3)))))
 
 ;; equal? — numbers
@@ -654,7 +682,7 @@
 
 (check-equal? (interp-prim 'equal? (list (PrimV '+) (PrimV '+))) (BoolV #f))
 ;; Wrong number of arguments
-(check-exn (regexp "interp-prim: DRMG4: equal\\? expects two arguments")
+(check-exn (regexp "interp-prim: DRMG: equal\\? expects two arguments")
  (lambda () (interp-prim 'equal? (list (NumV 5)))))
 
 (check-exn (regexp "equal\\? expects two arguments") (lambda () (interp-prim 'equal? (list (NumV 5)))))
