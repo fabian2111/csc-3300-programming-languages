@@ -28,7 +28,8 @@
                       (Bind '* (PrimV '*)) (Bind '/ (PrimV '/))
                       (Bind '<= (PrimV '<=)) (Bind 'substring (PrimV 'substring))
                       (Bind 'strlen (PrimV 'strlen)) (Bind 'equal? (PrimV 'equal?))
-                      (Bind 'error (PrimV 'error))
+                      (Bind 'error (PrimV 'error)) (Bind 'local (PrimV 'local))
+                      (Bind '% (PrimV '%)) (Bind '= (PrimV '=))
 
                       ;new funcs
                       (Bind 'println (PrimV 'println))
@@ -37,6 +38,7 @@
                       (Bind 'begin (PrimV 'begin))
                       (Bind '++ (PrimV '++))
                       (Bind 'random (PrimV 'random))
+                 
                       ))
 
 
@@ -73,11 +75,25 @@
       #f
       (if (member (first symbols) (rest symbols))
           #t
-          (has-duplicates? (rest symbols))) ))
+          (has-duplicates? (rest symbols)))))
 
 (check-equal? (has-duplicates? '(x y z)) #f)
 (check-equal? (has-duplicates? '(x y x)) #t)
 (check-equal? (has-duplicates? '()) #f)
+
+#;(define (is-primitive? [symbols : (Listof Symbol)]) : Boolean
+  (if (empty? symbols)
+      #f
+      (cond
+        [(empty? env) #f]
+        [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
+        [else (lookup sym (rest env))]))
+
+      )
+
+  
+
+
 ; -----------------------------------Parser---------------------------------------------------
 
 ;-----------------------------
@@ -103,6 +119,8 @@
     [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
      (if (has-duplicates? (cast vars (Listof Symbol)))
          (error 'parse "DRMG5: Duplicate variables in local")
+         ;(if (is-primitive? (cast vars (Listof Symbol)))
+             ;(error 'parse "DRMG5: Variable is already a primitive value")
          (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp)))))]
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
@@ -237,8 +255,9 @@
        [_ (error 'interp-prim "DRMG4: equal? expects two arguments")])]
     ['error
      (match args
-       [(list (StrV s)) (error s)]
-       [_ (error 'interp-prim "DRMG4: error expects one string argument")])]
+       [(list any) (error 'user-error (serialize any))]
+       [_ (error 'interp-prim "DRMG4: error expects one argument")])]
+
     
     ;new things for drmg 5, might refactor it
 
@@ -249,31 +268,13 @@
      ;(printf "> ")
      ;(define input-val (read-line))
      (define input-val (read-input))
- 
-     #;(if (string? input-val) 
-         (if (real? (string->number (cast input-val String)))
-                    (NumV (cast (string->number (cast input-val String)) Real))
-                    (error "DRMG: read-num expects a number value"))
-         
-         (error "DRMG: invalid input for read-num"))
-
      (match input-val
        [(StrV str) (if (real? (string->number str))
                     (NumV (cast (string->number str) Real))
                     (error "DRMG: read-num expects a number value"))]
        [_ (error "DRMG: invalid input for read-num")])]
-
-     
-
     ['read-str
-     ;(printf "> ")
-     ;(define input-val (read-line))
      (define input-val (read-input))
-     
-     #;(if (string? input-val)
-         (StrV (cast input-val String))
-         (error "DRMG: invalid input for read-str"))
-
      (if (equal? input-val #f)
          (error "DRMG: invalid input for read-str")
          (cast input-val StrV))]
@@ -569,14 +570,21 @@
 
 ;testing custom errors
 (check-exn
- (regexp (regexp-quote "my custom error"))
+ (regexp (regexp-quote "user-error: \"my custom error\""))
  (lambda ()
    (interp-prim 'error (list (StrV "my custom error")))))
 
 (check-exn
- (regexp (regexp-quote "DRMG4: error expects one string argument"))
+ (regexp (regexp-quote "user-error: 3"))
  (lambda ()
    (interp-prim 'error (list (NumV 3)))))
+
+(check-exn
+ (regexp (regexp-quote "DRMG4: error expects one argument"))
+ (lambda () (interp-prim 'error (list (NumV 3) (StrV "hi")))))
+
+(check-exn
+ (regexp (regexp-quote "DRMG4: error expects one argument")) (lambda () (interp-prim 'error '())))
 
 ;Checking string length function 
 (check-equal? (interp-prim 'strlen (list (StrV "hello"))) (NumV 5))
@@ -662,7 +670,7 @@
 
 ;test
 
-(top-interp '{local [empty = 15] in
+#;(top-interp '{local [empty = 15] in
  {local [empty? = {% x -> {equal? x empty}}]
          [cons = {% f r ->
                      {% key -> {if {equal? key 0} f r}}}]
