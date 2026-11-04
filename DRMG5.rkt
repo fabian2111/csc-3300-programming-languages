@@ -101,7 +101,9 @@
              (LamC (map IdC (cast params (Listof Symbol)))
                    (parse body)))] 
     [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
-      (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp))))]
+     (if (has-duplicates? (cast vars (Listof Symbol)))
+         (error 'parse "DRMG5: Duplicate variables in local")
+         (AppC (LamC (map IdC (cast vars (Listof Symbol))) (parse expr2)) (map parse (cast expr (Listof Sexp)))))]
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
     [_ (error 'parse "DRMG4: Invalid syntax")]))
@@ -125,9 +127,6 @@
 (define (println-drmg [args : (Listof Value)]) : BoolV
   (match args
        [(list (StrV s)) (println s) (BoolV #t)]
-       [_ (BoolV #f)]
-
-       ;what if you do error without the function symbol
        [_ (error "DRMG: println expects one string argument")]))
 
 
@@ -144,8 +143,8 @@
       (first args)
       (begin-drmg (rest args))))
 
-(check-equal?(begin-drmg (list (NumV 5)))(NumV 5))
-(check-equal?(begin-drmg (list (NumV 5) (NumV 10)))(NumV 10))
+(check-equal? (begin-drmg (list (NumV 5))) (NumV 5))
+(check-equal? (begin-drmg (list (NumV 5) (NumV 10))) (NumV 10))
 
 (define (concat-drmg [args : (Listof Value)]) : String
   (match args
@@ -161,15 +160,15 @@
 (check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
 (check-equal? (concat-drmg '())"")
 (check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
-(check-equal?(concat-drmg (list (NumV 42)))"42")
-(check-equal?(concat-drmg (list (BoolV #t)))"true")
-(check-equal?(concat-drmg (list (BoolV #f)))"false")
-(check-equal?(concat-drmg (list (StrV "Hello ") (StrV "World")))"Hello World")
-(check-equal?(concat-drmg (list (StrV "A") (StrV "B") (StrV "C")))"ABC")
-(check-equal?(concat-drmg (list (StrV "Age: ") (NumV 20)))"Age: 20")
-(check-equal?(concat-drmg (list (NumV 5) (StrV " apples")))"5 apples")
-(check-equal?(concat-drmg (list (StrV "Result: ") (BoolV #t)))"Result: true")
-(check-equal?(concat-drmg (list (NumV 10) (StrV " + ") (NumV 5)))"10 + 5")
+(check-equal? (concat-drmg (list (NumV 42)))"42")
+(check-equal? (concat-drmg (list (BoolV #t)))"true")
+(check-equal? (concat-drmg (list (BoolV #f)))"false")
+(check-equal? (concat-drmg (list (StrV "Hello ") (StrV "World")))"Hello World")
+(check-equal? (concat-drmg (list (StrV "A") (StrV "B") (StrV "C")))"ABC")
+(check-equal? (concat-drmg (list (StrV "Age: ") (NumV 20)))"Age: 20")
+(check-equal? (concat-drmg (list (NumV 5) (StrV " apples")))"5 apples")
+(check-equal? (concat-drmg (list (StrV "Result: ") (BoolV #t)))"Result: true")
+(check-equal? (concat-drmg (list (NumV 10) (StrV " + ") (NumV 5)))"10 + 5")
 (check-equal?
  (concat-drmg
   (list (StrV "Player: ")
@@ -179,6 +178,7 @@
         (StrV ", Winner: ")
         (BoolV #t)))
  "Player: Rock, Score: 10, Winner: true")
+
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
 ;takes in a symbol and a list of values and it performs an operation based
@@ -277,20 +277,17 @@
      (if (equal? input-val #f)
          (error "DRMG: invalid input for read-str")
          (cast input-val StrV))]
-
     ['begin (begin-drmg args)]
     ['++ (StrV (concat-drmg args))]
     ['random
- (match args
-   [(list (NumV n))
-    (if (exact-positive-integer? n)
-        (NumV (random (cast n Integer)))
-        (error 'interp-prim "random expects a positive integer"))]
-   [_ (error 'interp-prim "random expects one argument")])]
-
+     (match args
+       [(list (NumV n))
+        (if (exact-positive-integer? n)
+            (NumV (random (cast n Integer)))
+            (error 'interp-prim "random expects a positive integer"))]
+       [_ (error 'interp-prim "random expects one argument")])]
     
-    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")]
-    )) 
+    [_ (error 'interp-prim "DRMG4: Unknown primitive operator")])) 
 
     
 ; ------------------------------- Interp ------------------------------------------------
@@ -378,10 +375,13 @@
 ;-------------------------------- Testing -----------------------------
 ; --------------- DRMG 5 Helper Functions ---------
 
-(check-equal? (println-drmg (list (StrV "Hello")))(BoolV #t))
-(check-equal? (println-drmg (list (NumV 5)))(BoolV #f))
-(check-equal?(println-drmg '())(BoolV #f))
-(check-equal?(println-drmg (list (StrV "Hello") (StrV "World")))(BoolV #f))
+(check-equal? (println-drmg (list (StrV "Hello"))) (BoolV #t))
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg (list (NumV 5)))))
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg '())))
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
 
 ;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))
  
@@ -446,6 +446,7 @@
 (check-exn (regexp (regexp-quote "DRMG4: Invalid syntax for if")) (lambda () (parse '{if true 4})))
 ;Error
 (check-exn (regexp "DRMG4: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
+(check-exn (regexp "DRMG5: Duplicate variables in local") (lambda () (parse '{local [z = {% -> 3}] [z = 9] in z})))
 
 (check-exn (regexp "DRMG4: incorrect syntax for if") (lambda () (parse '{+ if 4})))
 (check-exn (regexp "DRMG4: incorrect syntax for local") (lambda () (parse '{- local 2})))
