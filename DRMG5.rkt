@@ -28,20 +28,13 @@
                       (Bind '* (PrimV '*)) (Bind '/ (PrimV '/))
                       (Bind '<= (PrimV '<=)) (Bind 'substring (PrimV 'substring))
                       (Bind 'strlen (PrimV 'strlen)) (Bind 'equal? (PrimV 'equal?))
-                      (Bind 'error (PrimV 'error)) (Bind 'local (PrimV 'local))
-                      (Bind '% (PrimV '%)) (Bind '= (PrimV '=))
+                      (Bind 'error (PrimV 'error)) (Bind 'println (PrimV 'println))
+                      (Bind 'read-num (PrimV 'read-num)) (Bind 'read-str (PrimV 'read-str))
+                      (Bind 'begin (PrimV 'begin)) (Bind '++ (PrimV '++))
+                      (Bind 'random (PrimV 'random))))
 
-                      ;new funcs
-                      (Bind 'println (PrimV 'println))
-                      (Bind 'read-num (PrimV 'read-num))
-                      (Bind 'read-str (PrimV 'read-str))
-                      (Bind 'begin (PrimV 'begin))
-                      (Bind '++ (PrimV '++))
-                      (Bind 'random (PrimV 'random))
-                 
-                      ))
-
-
+;reserved keywords
+(define reserved '(if = local % -> in))
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -77,6 +70,7 @@
           #t
           (has-duplicates? (rest symbols)))))
 
+<<<<<<< Updated upstream
 (check-equal? (has-duplicates? '(x y z)) #f)
 (check-equal? (has-duplicates? '(x y x)) #t)
 (check-equal? (has-duplicates? '()) #f)
@@ -92,11 +86,17 @@
       )
 
 (define reserved '(if = local % -> in))
+=======
+>>>>>>> Stashed changes
 
 ;; Returns #t if s is a symbol that is not a special keyword
 (define (valid-id? [s : Sexp]) : Boolean
   (and (symbol? s) (not (member s reserved)) #t))
 
+<<<<<<< Updated upstream
+=======
+;takes in a list of symbols and makes sure each symbol is valid to use
+>>>>>>> Stashed changes
 (define (all-valid-ids? [syms : (Listof Symbol)]) : Boolean
   (cond
     [(empty? syms) #t]
@@ -153,13 +153,14 @@
 
 ;----------------- drmg 5 helpers -------------------
 
-
+;takes in a list of Values and checks if it meets the arity of println
 (define (println-drmg [args : (Listof Value)]) : BoolV
   (match args
        [(list (StrV s)) (println s) (BoolV #t)]
        [_ (error "DRMG: println expects one string argument")]))
 
-
+;reads input from the user and returns a StrV of the user input
+;if it is valid or false if the input is invalid
 (define (read-input) : (U StrV #f)
   (printf "> ")
   (define input-val (read-line))
@@ -167,15 +168,7 @@
       (StrV (cast input-val String))
       #f))
 
-
-(define (begin-drmg [args : (Listof Value)]) : Value
-  (if (empty? (rest args))
-      (first args)
-      (begin-drmg (rest args))))
-
-(check-equal? (begin-drmg (list (NumV 5))) (NumV 5))
-(check-equal? (begin-drmg (list (NumV 5) (NumV 10))) (NumV 10))
-
+;takes in a list of Values and concatenates all of them into one string
 (define (concat-drmg [args : (Listof Value)]) : String
   (match args
     ['() ""]
@@ -183,31 +176,7 @@
                   [(NumV num) (string-append (number->string num) (concat-drmg r))]
                   [(StrV str) (string-append str (concat-drmg r))]
                   [(BoolV boo) (string-append (serialize (BoolV boo)) (concat-drmg r))]
-
                   [_ (string-append (serialize f) (concat-drmg r))])]))
-
-
-(check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
-(check-equal? (concat-drmg '())"")
-(check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
-(check-equal? (concat-drmg (list (NumV 42)))"42")
-(check-equal? (concat-drmg (list (BoolV #t)))"true")
-(check-equal? (concat-drmg (list (BoolV #f)))"false")
-(check-equal? (concat-drmg (list (StrV "Hello ") (StrV "World")))"Hello World")
-(check-equal? (concat-drmg (list (StrV "A") (StrV "B") (StrV "C")))"ABC")
-(check-equal? (concat-drmg (list (StrV "Age: ") (NumV 20)))"Age: 20")
-(check-equal? (concat-drmg (list (NumV 5) (StrV " apples")))"5 apples")
-(check-equal? (concat-drmg (list (StrV "Result: ") (BoolV #t)))"Result: true")
-(check-equal? (concat-drmg (list (NumV 10) (StrV " + ") (NumV 5)))"10 + 5")
-(check-equal?
- (concat-drmg
-  (list (StrV "Player: ")
-        (StrV "Rock")
-        (StrV ", Score: ")
-        (NumV 10)
-        (StrV ", Winner: ")
-        (BoolV #t)))
- "Player: Rock, Score: 10, Winner: true")
 
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
@@ -269,16 +238,16 @@
      (match args
        [(list any) (error 'user-error (serialize any))]
        [_ (error 'interp-prim "DRMG: error expects one argument")])]
+<<<<<<< Updated upstream
 
     
     ;new things for drmg 5, might refactor it
 
     ;don't know how to solve the issue of println printing out true 
+=======
+>>>>>>> Stashed changes
     ['println (println-drmg args)]
-    
     ['read-num
-     ;(printf "> ")
-     ;(define input-val (read-line))
      (define input-val (read-input))
      (match input-val
        [(StrV str) (if (real? (string->number str))
@@ -290,7 +259,7 @@
      (if (equal? input-val #f)
          (error "DRMG: invalid input for read-str")
          (cast input-val StrV))]
-    ['begin (begin-drmg args)]
+    ['begin (last args)]
     ['++ (StrV (concat-drmg args))]
     ['random
      (match args
@@ -299,7 +268,10 @@
             (NumV (random (cast n Integer))) 
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
+<<<<<<< Updated upstream
     
+=======
+>>>>>>> Stashed changes
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")])) 
 
     
@@ -343,6 +315,7 @@
   (serialize (interp (parse s) top-env)))
 
 
+<<<<<<< Updated upstream
 ;------------------------- Mini-Game (Rock Paper Scissors)----------------------
 
 (define Game
@@ -382,10 +355,13 @@
  
 ;(top-interp Game)  
 
+=======
+>>>>>>> Stashed changes
 ;-------------------------------- Testing -----------------------------
 ; --------------- DRMG 5 Helper Functions ---------
 
 (check-equal? (println-drmg (list (StrV "Hello"))) (BoolV #t))
+
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
            (lambda () (println-drmg (list (NumV 5)))))
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
@@ -393,7 +369,46 @@
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
            (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
 
+<<<<<<< Updated upstream
 ;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))  
+=======
+(check-exn (regexp "println expects one string argument") (lambda () (println-drmg (list (NumV 5) (NumV 10)))))
+
+;Concat (++)
+
+(check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
+(check-equal? (concat-drmg '())"")
+(check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
+(check-equal? (concat-drmg (list (NumV 42)))"42")
+(check-equal? (concat-drmg (list (BoolV #t)))"true")
+(check-equal? (concat-drmg (list (BoolV #f)))"false")
+(check-equal? (concat-drmg (list (StrV "Hello ") (StrV "World"))) "Hello World")
+(check-equal? (concat-drmg (list (StrV "A") (StrV "B") (StrV "C"))) "ABC")
+(check-equal? (concat-drmg (list (StrV "Age: ") (NumV 20))) "Age: 20")
+(check-equal? (concat-drmg (list (NumV 5) (StrV " apples"))) "5 apples")
+(check-equal? (concat-drmg (list (StrV "Result: ") (BoolV #t))) "Result: true")
+(check-equal? (concat-drmg (list (NumV 10) (StrV " + ") (NumV 5))) "10 + 5")
+(check-equal?
+ (concat-drmg
+  (list (StrV "Player: ")
+        (StrV "Rock")
+        (StrV ", Score: ")
+        (NumV 10)
+        (StrV ", Winner: ")
+        (BoolV #t)))
+ "Player: Rock, Score: 10, Winner: true")
+
+;begin
+(check-equal? (interp-prim 'begin (list {NumV 3} {StrV "test"})) {StrV "test"})
+(check-equal? (interp-prim 'begin (list {NumV 6})) {NumV 6})
+
+;println
+(check-equal? (interp-prim 'println (list {StrV "test"})) {BoolV #t})
+
+;interp-prim - ++
+(check-equal? (interp-prim '++ (list {StrV "Num: "} {NumV 5})) {StrV "Num: 5"})
+
+>>>>>>> Stashed changes
  
 ;------------------------ Look Up Function -------------------
 
@@ -450,6 +465,12 @@
 (check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
 (check-equal? (parse '{+ 2 3}) (AppC (IdC '+) (list (NumC 2) (NumC 3))))
 (check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+
+;duplicate parameters test
+(check-equal? (has-duplicates? '(x y z)) #f)
+(check-equal? (has-duplicates? '(x y x)) #t)
+(check-equal? (has-duplicates? '()) #f)
+
 
 ; Invalid Syntax 
 (check-exn (regexp (regexp-quote "DRMG: Invalid syntax")) (lambda () (parse '{})))
@@ -514,12 +535,6 @@
 (check-exn (regexp "random expects a positive integer") (lambda () (top-interp  '{random -1})))
 (check-exn (regexp "random expects one argument") (lambda () (top-interp  '{random 1 10})))
  
-
-#;(check-true
- (or (equal? (interp-prim 'random (list (NumV 3))) (NumV 0))
-     (equal? (interp-prim 'random (list (NumV 3))) (NumV 1))
-     (equal? (interp-prim 'random (list (NumV 3))) (NumV 2))
-     (equal? (interp-prim 'random (list (NumV 3))) (NumV 3))))
 
 ; checking primitive operators 
 (check-equal? (interp-prim '+ (list (NumV 2) (NumV 3))) (NumV 5))  
@@ -681,22 +696,52 @@
 (check-exn (regexp "equal\\? expects two arguments") (lambda () (interp-prim 'equal? '())))
 
 
-;test
 
-#;(top-interp '{local [empty = 15] in
- {local [empty? = {% x -> {equal? x empty}}]
-         [cons = {% f r ->
-                     {% key -> {if {equal? key 0} f r}}}]
-         [first = {% pair -> {pair 0}}]
-         [rest = {% pair -> {pair 1}}]
-  in
-  {local [sum-list = {% l self ->
-                          {if {empty? l}
-                              0
-                              {+ {first l} {self {rest l} self}}}}]
-          [my-list = {cons 3 {cons 24 {cons 8 empty}}}]
-   in
-   {println {++ "The sum of the list is "
-                {sum-list my-list sum-list}
-                "."}}}}})
+;------------------------- Mini-Game (Rock Paper Scissors)----------------------
+
+(define Game
+  '{begin
+    {println "Ready to Play Rock Paper Scissors!"}
+    {println "Please enter rock, paper, or scissors:"}
+
+    {local [player = {read-str}]
+     in
+     {local [computer-choice = {random 3}]
+      in
+      {local [computer = {if {equal? computer-choice 0}
+                            "rock"
+                            {if {equal? computer-choice 1}
+                                "paper"
+                                "scissors"}}]
+       in
+       {begin
+         {println {++ "You chose: " player}}
+         {println {++ "The computer chose: " computer}}
+
+         {if {equal? player computer}
+             {println "It's a tie!"}
+             {if {equal? player "rock"}
+                 {if {equal? computer "scissors"}
+                     {println "You win! Rock beats scissors!"}
+                     {println "You lose! Paper beats rock!"}}
+                 {if {equal? player "paper"}
+                     {if {equal? computer "rock"}
+                         {println "You win! Paper beats rock!"}
+                         {println "You lose! Scissors beats paper!"}}
+                     {if {equal? player "scissors"}
+                         {if {equal? computer "paper"}
+                             {println "You win! Scissors beats paper!"}
+                             {println "You lose! Rock beats scissors!"}}
+                         {println "Invalid choice!"}}}}}}}}}})
+ 
+;(top-interp Game)
+
+;Text from game
+
+; "Ready to Play Rock Paper Scissors!"
+; "Please enter rock, paper, or scissors:"
+; > rock
+; "You chose: rock"
+; "The computer chose: paper"
+; "You lose! Paper beats rock!"
 
