@@ -4,7 +4,7 @@
 ;Full project implemented
 
 ; --------------- Type Definitions ----------------------
-(define-type ExprC (U NumC NumV IdC StrC StrV If LamC AppC ArrC))
+(define-type ExprC (U NumC NumV IdC StrC If LamC AppC ArrC MutC))
 (define-type Value (U NumV BoolV StrV CloV PrimV NullV ArrV))
 (define-type Binding Bind)
 (define-type Env (Listof Bind))
@@ -22,9 +22,18 @@
 (struct BoolV ([boo : Boolean]) #:transparent)
 (struct CloV ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 
-;guessing at this
+;mutc (mutation) i think its like this
+(struct MutC ([var : IdC] [val : ExprC]) #:transparent)
+
+;guessing at this, actually idk if ArrC is apart of ExprC, ArrV is def aprt of values tho
 (struct ArrC ([values : (Listof ExprC)]) #:transparent)
 (struct ArrV ([values : (Listof Value)]) #:transparent)
+
+(struct NullV () #:transparent)
+
+;store
+;(define-type Store (something))
+;(define sto ( something idk))
 
 (struct Bind ([name : Symbol] [val : Value]) #:transparent)
 
@@ -62,7 +71,7 @@
     [(PrimV _ ) "#<primop>"]
     [(NullV) "null"]
     
-    )
+    ))
 
 
 ; ---------------------------------Look Up for Variable in Environment-------------------------------
@@ -451,14 +460,14 @@
 (check-equal? (interp (If (IdC 'true) (NumC 10) (NumC 20)) top-env) (NumV 10))
 (check-equal? (interp (If (IdC 'false) (NumC 10) (NumC 20)) top-env) (NumV 20))
 (check-equal?
-(interp (If (IdC 'true) (NumC 10) (AppC (IdC 'error) (list (StrV "custom error")))) top-env) (NumV 10))
+(interp (If (IdC 'true) (NumC 10) (AppC (IdC 'error) (list (StrC "custom error")))) top-env) (NumV 10))
 
 (check-exn (regexp (regexp-quote "custom error"))
            (lambda ()
              (interp
               (If {AppC (IdC '<=) {list (NumC 4) (NumC 0)}}
                   (NumC 10) (AppC {IdC 'error}
-                                  {list (StrV "custom error")})) top-env)))
+                                  {list (StrC "custom error")})) top-env)))
 
 (check-exn (regexp (regexp-quote "DRMG: condition is not a boolean value"))
  (lambda () (interp (If (NumC 5) (NumC 10) (NumC 20)) top-env)))
