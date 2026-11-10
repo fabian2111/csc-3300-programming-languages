@@ -70,33 +70,16 @@
           #t
           (has-duplicates? (rest symbols)))))
 
-<<<<<<< Updated upstream
 (check-equal? (has-duplicates? '(x y z)) #f)
 (check-equal? (has-duplicates? '(x y x)) #t)
 (check-equal? (has-duplicates? '()) #f)
-
-#;(define (is-primitive? [symbols : (Listof Symbol)]) : Boolean
-  (if (empty? symbols)
-      #f
-      (cond
-        [(empty? env) #f]
-        [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
-        [else (lookup sym (rest env))]))
-
-      )
-
-(define reserved '(if = local % -> in))
-=======
->>>>>>> Stashed changes
 
 ;; Returns #t if s is a symbol that is not a special keyword
 (define (valid-id? [s : Sexp]) : Boolean
   (and (symbol? s) (not (member s reserved)) #t))
 
-<<<<<<< Updated upstream
-=======
+
 ;takes in a list of symbols and makes sure each symbol is valid to use
->>>>>>> Stashed changes
 (define (all-valid-ids? [syms : (Listof Symbol)]) : Boolean
   (cond
     [(empty? syms) #t]
@@ -238,14 +221,7 @@
      (match args
        [(list any) (error 'user-error (serialize any))]
        [_ (error 'interp-prim "DRMG: error expects one argument")])]
-<<<<<<< Updated upstream
-
     
-    ;new things for drmg 5, might refactor it
-
-    ;don't know how to solve the issue of println printing out true 
-=======
->>>>>>> Stashed changes
     ['println (println-drmg args)]
     ['read-num
      (define input-val (read-input))
@@ -268,10 +244,7 @@
             (NumV (random (cast n Integer))) 
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
-<<<<<<< Updated upstream
-    
-=======
->>>>>>> Stashed changes
+
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")])) 
 
     
@@ -314,49 +287,6 @@
 (define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
 
-
-<<<<<<< Updated upstream
-;------------------------- Mini-Game (Rock Paper Scissors)----------------------
-
-(define Game
-  '{begin
-    {println "Ready to Play Rock Paper Scissors!"}
-    {println "Please enter rock, paper, or scissors:"}
-
-    {local [player = {read-str}]
-     in
-     {local [computer-choice = {random 3}]
-      in
-      {local [computer = {if {equal? computer-choice 0}
-                            "rock"
-                            {if {equal? computer-choice 1}
-                                "paper"
-                                "scissors"}}]
-       in
-       {begin
-         {println {++ "You chose: " player}}
-         {println {++ "The computer chose: " computer}}
-
-         {if {equal? player computer}
-             {println "It's a tie!"}
-             {if {equal? player "rock"}
-                 {if {equal? computer "scissors"}
-                     {println "You win! Rock beats scissors!"}
-                     {println "You lose! Paper beats rock!"}}
-                 {if {equal? player "paper"}
-                     {if {equal? computer "rock"}
-                         {println "You win! Paper beats rock!"}
-                         {println "You lose! Scissors beats paper!"}}
-                     {if {equal? player "scissors"}
-                         {if {equal? computer "paper"}
-                             {println "You win! Scissors beats paper!"}
-                             {println "You lose! Rock beats scissors!"}}
-                         {println "Invalid choice!"}}}}}}}}}})
- 
-;(top-interp Game)  
-
-=======
->>>>>>> Stashed changes
 ;-------------------------------- Testing -----------------------------
 ; --------------- DRMG 5 Helper Functions ---------
 
@@ -368,10 +298,6 @@
            (lambda () (println-drmg '())))
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
            (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
-
-<<<<<<< Updated upstream
-;(check-exn (regexp "println expects one string argument")(lambda () (println-drmg (list (NumV 5) (NumV 10)))))  
-=======
 (check-exn (regexp "println expects one string argument") (lambda () (println-drmg (list (NumV 5) (NumV 10)))))
 
 ;Concat (++)
@@ -407,8 +333,6 @@
 
 ;interp-prim - ++
 (check-equal? (interp-prim '++ (list {StrV "Num: "} {NumV 5})) {StrV "Num: 5"})
-
->>>>>>> Stashed changes
  
 ;------------------------ Look Up Function -------------------
 
