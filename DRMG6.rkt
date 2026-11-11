@@ -58,6 +58,34 @@
 ;reserved keywords
 (define reserved '(if = local % -> in :=))
 
+;-----------------  store ------------------
+;(define-type Store (something))
+;(define sto ( something idk))
+
+; Vectorof - something i found in the the docs, need to look more into it
+
+(define-type Store (Vectorof Any))
+(define store (make-vector 100))
+(vector-set! store 0 1)
+
+
+; trying to create the allocate helper func 
+(define (allocate [ sto : Store ] [size : Integer]) : Integer
+  (define start (cast (vector-ref sto 0) Integer))
+  (vector-set! sto 0 (+ start size))
+  size
+  )
+
+; trying to understand how it works and debugging 
+(define firsts (allocate store 5))
+(define seconded (allocate store 3))
+
+(check-equal? firsts 1)
+(check-equal? seconded 6) 
+(check-equal? (vector-ref store 0) 9)
+
+
+
 
 
 ; ---------------- store functions ----------
