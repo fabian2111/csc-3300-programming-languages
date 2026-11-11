@@ -32,8 +32,8 @@
 (struct NullV () #:transparent)
 
 ;store
-;(define-type Store (something))
-;(define sto ( something idk))
+(define-type Store (Vector Cell))
+(struct Cell ([location : Integer] [val : Value]) #:transparent)
 
 (struct Bind ([name : Symbol] [val : Value]) #:transparent)
 
@@ -57,6 +57,26 @@
 
 ;reserved keywords
 (define reserved '(if = local % -> in :=))
+
+
+
+; ---------------- store functions ----------
+
+(define (populate-store [vec : Vector] [env : Env] [location : Integer]) : Store
+  (
+
+  )
+
+(define (make-initial-store [memsize : Integer]) : Store
+  (make-vector memsize)
+  (
+
+  )
+
+
+; probably for making arrays
+#;(define (allocate [sto : Store] [locations : Integer]) : Location)
+
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -314,11 +334,20 @@
                [(PrimV op) (interp-prim op (interp-args args env))]
                [_ (error 'interp "DRMG: Attempted to call a non-function")])]))
 
+
+; DRMG 6 version
+(define (interp2 [e : ExprC] [env : Env] [sto : Store]) : Value
+  (NumV 2))
+
 ;----------------------------- top interp -------------------------------
 
 ;takes in a sexp and returns a serialized string containing a value
 (define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
+
+; DRMG 6 version of top interp
+#;(define (top-interp [s : Sexp] [memsize : Integer]) : String
+  (serialize (interp (parse s) initial-env (make-initial-store memsize))))
 
 ;-------------------------------- Testing -----------------------------
 ; --------------- DRMG 5 Helper Functions ---------
