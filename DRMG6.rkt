@@ -4,7 +4,7 @@
 ;Full project implemented
 
 ; --------------- Type Definitions ----------------------
-(define-type ExprC (U NumC NumV IdC StrC If LamC AppC ArrC MutC))
+(define-type ExprC (U NumC IdC StrC If LamC AppC MutC RocalC))
 (define-type Value (U NumV BoolV StrV CloV PrimV NullV ArrV))
 (define-type Binding Bind)
 (define-type Env (Listof Bind))
@@ -22,89 +22,153 @@
 (struct BoolV ([boo : Boolean]) #:transparent)
 (struct CloV ([args : (Listof Symbol)] [body : ExprC] [env : Env]) #:transparent)
 
-;mutc (mutation) i think its like this
-(struct MutC ([var : IdC] [val : ExprC]) #:transparent)
-
 ;guessing at this, actually idk if ArrC is apart of ExprC, ArrV is def aprt of values tho
 (struct ArrC ([values : (Listof ExprC)]) #:transparent)
-(struct ArrV ([values : (Listof Value)]) #:transparent)
-
+(struct ArrV ([loc : Location] [len : Natural]) #:transparent)
 (struct NullV () #:transparent)
+;mutc (mutation) i think its like this
+(struct MutC ([var : IdC] [val : ExprC]) #:transparent)
+(struct RocalC ([name : IdC] [rhs : ExprC] [body : ExprC]) #:transparent)
 
+
+
+(define-type Location Natural)
 ;store
-(define-type Store (Vector Cell))
+;(define-type Store (Vector Cell))
+
 (struct Cell ([location : Integer] [val : Value]) #:transparent)
 
-(struct Bind ([name : Symbol] [val : Value]) #:transparent)
+(define-type Store (Vectorof Value))
+(struct InitialBinding ([name : Symbol] [val : Value]) #:transparent)
+(struct Bind ([name : Symbol] [location : Location]) #:transparent)
+
+(define top-env
+  (list
+    (InitialBinding 'true (BoolV #t))
+    (InitialBinding 'false (BoolV #f))
+    (InitialBinding '+ (PrimV '+))
+    (InitialBinding '- (PrimV '-))
+    (InitialBinding '* (PrimV '*))
+    (InitialBinding '/ (PrimV '/))
+    (InitialBinding '<= (PrimV '<=))
+    (InitialBinding 'substring (PrimV 'substring))
+    (InitialBinding 'strlen (PrimV 'strlen))
+    (InitialBinding 'equal? (PrimV 'equal?))
+    (InitialBinding 'error (PrimV 'error))
+    (InitialBinding 'println (PrimV 'println))
+    (InitialBinding 'read-num (PrimV 'read-num))
+    (InitialBinding 'read-str (PrimV 'read-str))
+    (InitialBinding 'begin (PrimV 'begin))
+    (InitialBinding '++ (PrimV '++))
+    (InitialBinding 'random (PrimV 'random))
+
+    ; DRMG6 new functions
+    (InitialBinding 'make-array (PrimV 'make-array))
+    (InitialBinding 'array (PrimV 'array))
+    (InitialBinding 'aref (PrimV 'aref))
+    (InitialBinding 'aset! (PrimV 'aset!))))
+
+#;(define top-env
+  (list
+    (Bind 'true 0)
+    (Bind 'false 1)
+    (Bind '+ 2)
+    (Bind '- 3)
+    (Bind '* 4)
+    (Bind '/ 5)
+    (Bind '<= 6)
+    (Bind 'substring 7)
+    (Bind 'strlen 8)
+    (Bind 'equal? 9)
+    (Bind 'error 10)
+    (Bind 'println 11)
+    (Bind 'read-num 12)
+    (Bind 'read-str 13)
+    (Bind 'begin 14)
+    (Bind '++ 15)
+    ;(Bind 'random 16)
+
+    ; DRMG6 new functions
+    (Bind 'make-array 16)
+    (Bind 'array 17)
+    (Bind 'aref 18)
+    (Bind 'aset! 19)))
 
 
-(define top-env (list (Bind 'true (BoolV #t)) (Bind 'false (BoolV #f))
-                      (Bind '+ (PrimV '+)) (Bind '- (PrimV '-))
-                      (Bind '* (PrimV '*)) (Bind '/ (PrimV '/))
-                      (Bind '<= (PrimV '<=)) (Bind 'substring (PrimV 'substring))
-                      (Bind 'strlen (PrimV 'strlen)) (Bind 'equal? (PrimV 'equal?))
-                      (Bind 'error (PrimV 'error)) (Bind 'println (PrimV 'println))
-                      (Bind 'read-num (PrimV 'read-num)) (Bind 'read-str (PrimV 'read-str))
-                      (Bind 'begin (PrimV 'begin)) (Bind '++ (PrimV '++))
-                      (Bind 'random (PrimV 'random))
-                      
-                      ;DRMG6 new funcs
-                      (Bind 'make-array (PrimV 'make-array))
-                      (Bind 'array (PrimV 'array))
-                      (Bind 'aref (PrimV 'aref))
-                      (Bind 'aset! (PrimV 'aset!))
-                      ))
 
 ;reserved keywords
-(define reserved '(if = local % -> in :=))
+(define reserved '(if = local % -> in := rocal))
 
 ;-----------------  store ------------------
 ;(define-type Store (something))
 ;(define sto ( something idk))
 
-; Vectorof - something i found in the the docs, need to look more into it
-
-(define-type Store (Vectorof Any))
-(define store (make-vector 100))
-(vector-set! store 0 1)
-
-
-; trying to create the allocate helper func 
-(define (allocate [ sto : Store ] [size : Integer]) : Integer
-  (define start (cast (vector-ref sto 0) Integer))
-  (vector-set! sto 0 (+ start size))
-  size
-  )
-
-; trying to understand how it works and debugging 
-(define firsts (allocate store 5))
-(define seconded (allocate store 3))
-
-(check-equal? firsts 1)
-(check-equal? seconded 6) 
-(check-equal? (vector-ref store 0) 9)
-
-
-
-
 
 ; ---------------- store functions ----------
 
-(define (populate-store [vec : Vector] [env : Env] [location : Integer]) : Store
-  (
+(define (add-to-store [sto : Store] [value : Value]) : Location
+  ;(match value
+   ; [(ArrV loc len)
+  (define loc (allocate sto 1))
+  (vector-set! sto loc value)
+  loc)
+  
+
+
+(define (make-initial-store [memsize : Natural]) : Store
+  (define store : Store (make-vector memsize (NullV)))
+  ;(vector-set! store 0 1)
+  (populate-store store top-env)
+  store)
+;-------------
+
+#;(define (populate-store [vec : Vector] [env : Env] [location : Integer]) : Store
 
   )
+(define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Env
+  (cond
+    [(empty? bindings) empty]
+    [else
+     (define current (first bindings))
+     (define location (allocate sto 1))
+     (vector-set! sto location (InitialBinding-val current))
+     (cons
+      (Bind (InitialBinding-name current) location)
+      (populate-store sto (rest bindings)))]))
 
-(define (make-initial-store [memsize : Integer]) : Store
-  (make-vector memsize)
-  (
+  #;(define (populate-store [sto : Store] [bindings : (Listof Bind)]) : Env
+  (cond
+    [(empty? bindings) empty]
+    [else
+     (define current (first bindings))
+     (define location (allocate sto 1))
+     (vector-set! sto location (PrimV (Bind-name current)))
+     (cons
+      (Bind (Bind-name current) location)
+      (populate-store sto (rest bindings)))]))
 
-  )
 
 
 ; probably for making arrays
-#;(define (allocate [sto : Store] [locations : Integer]) : Location)
+;(define (allocate [sto : Store] [locations : Integer]) : Location
+  
+(define (allocate [sto : Store] [size : Natural]) : Location
+  (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
+  (define next (+ start size))
+  (cond
+    [(> next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
+    [else
+     (vector-set! sto 0 next) start]))
+ 
+(define my-store (make-initial-store 20))
+(check-equal? (allocate my-store 4) 1)
+(check-equal? (allocate my-store 3) 5)
+(check-equal? (vector-ref my-store 0) 8)
 
+
+
+(define initial-env : Env
+  (populate-store (make-initial-store 100) top-env))
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -118,6 +182,7 @@
     [(CloV _ _ _) "#<procedure>"]
     [(PrimV _ ) "#<primop>"]
     [(NullV) "null"]
+    [(ArrV _ _) "#<array>"]
     
     ))
 
@@ -126,10 +191,10 @@
 ;takes in a symbol and an environment and it looks into the environment
 ;and tries to look if the given symbol is inside the environment
 ;and then it returns the value associated with the symbol
-(define (lookup [sym : Symbol] [env : Env]) : Value
+(define (lookup [sym : Symbol] [env : Env]) : Location
    (cond
       [(empty? env) (error 'lookup "DRMG: Binding was not found for ~v" sym)]
-      [(symbol=? sym (Bind-name (first env))) (Bind-val (first env))]
+      [(symbol=? sym (Bind-name (first env))) (Bind-location (first env))]
       [else (lookup sym (rest env))]))
 
 
@@ -196,7 +261,7 @@
      (define valid (valid-id? var))
      (if (not valid)
          (error 'parse "DRMG: Reserved word used as variable")   
-         ( something))]
+         (parse val))]
        
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
@@ -207,13 +272,23 @@
 
 ;Takes in a list of args and the environment and it evaluates the args
 ;into values using interp
-(define (interp-args [args : (Listof ExprC)] [env : Env]) : (Listof Value)
+(define (interp-args [args : (Listof ExprC)] [env : Env] [sto : Store]) : (Listof Value)
   (match args
     ['()'()]
     [(cons first rest)
-     (cons (interp first env)
-           (interp-args rest env))]))
+     (define interp-first (interp first env sto))
+     (cons interp-first
+           (interp-args rest env sto))]))
 
+; basically reserves a spot for a param and saves the value of that param in that spot 
+(define (extend-env [params : (Listof Symbol)] [vals : (Listof Value)] [env : Env] [sto : Store]) : Env
+  (match* (params vals)
+    [('() '()) env]
+    [((cons p-first p-rest) (cons val-first val-rest))
+     (define location (allocate sto 1))
+     (vector-set! sto location val-first)
+     (extend-env p-rest val-rest (cons (Bind p-first location) env) sto)]
+    [(_ _) (error 'extend-env "DRMG: parameter/argument count mismatch")]))
 
 ;----------------- drmg 5 helpers -------------------
 
@@ -246,7 +321,7 @@
 
 ;takes in a symbol and a list of values and it performs an operation based
 ;on the symbol that was given
-(define (interp-prim [op : Symbol] [args : (Listof Value)]) : Value
+(define (interp-prim [op : Symbol] [args : (Listof Value)] [sto : Store]) : Value
   (match op
     ['+
      (match args
@@ -333,7 +408,7 @@
 
 ;takes in an exprC and an environment and it uses the
 ;environment to interpret the expression into a value
-(define (interp [e : ExprC] [env : Env]) : Value
+#;(define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(IdC s) (lookup s env)]
     [(NumC n) (NumV n)]
@@ -364,348 +439,48 @@
 
 
 ; DRMG 6 version
-(define (interp2 [e : ExprC] [env : Env] [sto : Store]) : Value
-  (NumV 2))
+(define (interp [e : ExprC] [env : Env] [sto : Store]) : Value
+  (NumV 2)
+  (match e
+    [(IdC s) (cast (vector-ref sto (lookup s env)) Value)]
+    [(NumC n) (NumV n)]
+    [(StrC s) (StrV s)]
+    [(If condition ifTrue else)
+      (define result (interp condition env sto))
+       (match result
+       [(BoolV #t) (interp ifTrue env sto)]
+       [(BoolV #f) (interp else env sto)]
+       [_ (error 'interp "DRMG: condition is not a boolean value")])]
+    [(LamC args body) (CloV (map IdC-sym args) body env)]
+    ;; copied and pasted changed a couple things (ts is not correct feel free to change)
+    [(AppC func args)
+     (define fundef (interp func env sto))
+     (define arg-vals (interp-args args env sto))
+             (match fundef
+               ; Interp returns Value so we have to match to see if its specifically CloV
+               [(CloV params body closure-env) 
+                (cond
+                  ;if the lengths of arguements are right we interp the values,
+                  ;making in bindings, and create the new env
+                  [(equal? (length params) (length args))
+                   ;(define arg-values (interp-args args env sto))
+                   ;(define bindings (map Bind params arg-values))
+                   ;(define new-env (append bindings closure-env))
+                   (interp body (extend-env params arg-vals closure-env sto) sto)]
+                   ;(interp body new-env)]
+                  [else (error 'interp "DRMG: Number of Arguments are not equal got ~v" args)])]
+              ; [(PrimV op) (interp-prim op (interp-args args env))]
+               [(PrimV op) (interp-prim op arg-vals sto)]
+               [_ (error 'interp "DRMG: Attempted to call a non-function")])]
+    ))
 
 ;----------------------------- top interp -------------------------------
 
 ;takes in a sexp and returns a serialized string containing a value
-(define (top-interp [s : Sexp]) : String
+#;(define (top-interp [s : Sexp]) : String
   (serialize (interp (parse s) top-env)))
 
 ; DRMG 6 version of top interp
-#;(define (top-interp [s : Sexp] [memsize : Integer]) : String
+(define (top-interp [s : Sexp] [memsize : Natural]) : String
   (serialize (interp (parse s) initial-env (make-initial-store memsize))))
-
-;-------------------------------- Testing -----------------------------
-; --------------- DRMG 5 Helper Functions ---------
-
-(check-equal? (println-drmg (list (StrV "Hello"))) (BoolV #t))
-
-(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
-           (lambda () (println-drmg (list (NumV 5)))))
-(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
-           (lambda () (println-drmg '())))
-(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
-           (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
-(check-exn (regexp "println expects one string argument") (lambda () (println-drmg (list (NumV 5) (NumV 10)))))
-
-;Concat (++)
-
-(check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
-(check-equal? (concat-drmg '())"")
-(check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
-(check-equal? (concat-drmg (list (NumV 42)))"42")
-(check-equal? (concat-drmg (list (BoolV #t)))"true")
-(check-equal? (concat-drmg (list (BoolV #f)))"false")
-(check-equal? (concat-drmg (list (StrV "Hello ") (StrV "World"))) "Hello World")
-(check-equal? (concat-drmg (list (StrV "A") (StrV "B") (StrV "C"))) "ABC")
-(check-equal? (concat-drmg (list (StrV "Age: ") (NumV 20))) "Age: 20")
-(check-equal? (concat-drmg (list (NumV 5) (StrV " apples"))) "5 apples")
-(check-equal? (concat-drmg (list (StrV "Result: ") (BoolV #t))) "Result: true")
-(check-equal? (concat-drmg (list (NumV 10) (StrV " + ") (NumV 5))) "10 + 5")
-(check-equal?
- (concat-drmg
-  (list (StrV "Player: ")
-        (StrV "Rock")
-        (StrV ", Score: ")
-        (NumV 10)
-        (StrV ", Winner: ")
-        (BoolV #t)))
- "Player: Rock, Score: 10, Winner: true")
-
-;begin
-(check-equal? (interp-prim 'begin (list {NumV 3} {StrV "test"})) {StrV "test"})
-(check-equal? (interp-prim 'begin (list {NumV 6})) {NumV 6})
-
-;println
-(check-equal? (interp-prim 'println (list {StrV "test"})) {BoolV #t})
-
-;interp-prim - ++
-(check-equal? (interp-prim '++ (list {StrV "Num: "} {NumV 5})) {StrV "Num: 5"})
- 
-;------------------------ Look Up Function -------------------
-
-(check-equal? (lookup 'b (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12)))) (NumV 12))
-(check-exn (regexp (regexp-quote "DRMG: Binding was not found"))
-           (lambda () (lookup 'c (list (Bind 'a (NumV 5)) (Bind 'b (NumV 12))))))
-
-(check-equal? (lookup '+ top-env) (PrimV '+))
-(check-equal? (lookup 'x (list (Bind 'x (StrV "test")))) (StrV "test"))
-
-
-; Top-interp tests
-
-(check-equal? (top-interp "hi") "\"hi\"")
-(check-equal? (top-interp 'true) "true")
-(check-equal? (top-interp 'false) "false")
-(check-equal? (top-interp '{if {<= {* 5 2} 11} 10 11}) "10")
-(check-equal? (top-interp '{local [x = 4] in {+ x 4}}) "8")
-(check-equal? (top-interp '{local [z = {+ 9 14}] [y = 98] in {+ z y}}) "121")
-(check-equal? (top-interp '{local [func = {% x -> {+ x 5}}] in {func 5}}) "10")
-(check-equal? (top-interp '{% x -> {+ x 1}}) "#<procedure>")
-(check-equal? (top-interp '{{% x -> {+ x 1}} 4}) "5")
-(check-equal? (top-interp '{{% -> {+ 4 10}}}) "14")
-(check-equal? (top-interp '({% x -> {+ x 1}} {* 2 10})) "21")
-
-
-;----------------------- Serialize Tests----------------------
-; Test serializing numbers
-(check-equal? (serialize (NumV 5)) "5")
-(check-equal? (serialize (NumV -3)) "-3")
-(check-equal? (serialize (NumV 2.5)) "2.5")
-
-; Test serializing booleans
-(check-equal? (serialize (BoolV #t)) "true")
-(check-equal? (serialize (BoolV #f)) "false")
-
-; Test serializing strings
-(check-equal? (serialize (StrV "hello")) "\"hello\"")
-(check-equal? (serialize (StrV "DRMG")) "\"DRMG\"")
-
-; Test serializing closures
-(check-equal?
- (serialize (CloV empty (NumV 5) empty))"#<procedure>") 
-
-; Test serializing primitive operators
-(check-equal? (serialize (PrimV '+)) "#<primop>")
-
-;---------------------- Parser Test ---------------------------
-;Basic Test
-(check-equal? (parse 4) {NumC 4})
-(check-equal? (parse "test") {StrC "test"})
-(check-equal? (parse 'Hello) {IdC 'Hello})
-(check-equal? (parse '{if true 10 20}) (If (IdC 'true) (NumC 10) (NumC 20)))
-(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
-(check-equal? (parse '{+ 2 3}) (AppC (IdC '+) (list (NumC 2) (NumC 3))))
-(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
-
-;duplicate parameters test
-(check-equal? (has-duplicates? '(x y z)) #f)
-(check-equal? (has-duplicates? '(x y x)) #t)
-(check-equal? (has-duplicates? '()) #f)
-
-
-; Invalid Syntax 
-(check-exn (regexp (regexp-quote "DRMG: Invalid syntax")) (lambda () (parse '{})))
-(check-exn (regexp (regexp-quote "DRMG: Invalid syntax for if")) (lambda () (parse '{if true 4})))
-;Error
-(check-exn (regexp "DRMG: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
-(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '{local [z = {% -> 3}] [z = 9] in z})))
-
-(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{+ if 4}))) 
-(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{- local 2})))
-(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
-(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
-(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '(local (z = (% -> 3)) (z = 9) in (z)))))
-(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '(if = 0 1)))) 
-(check-exn (regexp "DRMG: Reserved word used as local variable") (lambda () (parse '(local (local = "") in "World")))) 
-(check-exn (regexp "DRMG: Reserved DRMG word used as parameter") (lambda () (parse '(% if -> 3))))  
-; ------------------------------- Interp Test Cases -----------------------
-;Normal 
-(check-equal? (interp (NumC 5) top-env) (NumV 5)) 
-(check-equal? (interp (IdC 'x) (list (Bind 'x {NumV 4}))) (NumV 4))
-;String
-(check-equal? (interp (StrC "hello") top-env) (StrV "hello"))
-;AppC
-(check-equal? (interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 10))) {list (Bind 'x {NumV 10})})  (NumV 10))
-(check-equal? (interp (AppC (LamC (list (IdC 'y)) (IdC 'x)) (list (NumC 10))) (list (Bind 'x {NumV 4}))) (NumV 4))
-;IF 
-(check-equal? (interp (If {AppC (IdC '<=) {list {NumC 2} {NumC 3}}} {NumC 4} {NumC 21}) top-env) {NumV 4})
-(check-equal? (interp (If {AppC (IdC '<=) {list {NumC 10} {NumC 0}}} {NumC 2} {NumC 100}) top-env) {NumV 100})
-(check-equal? (interp (If (IdC 'true) (NumC 1) (NumC 2)) top-env) {NumV 1})
-(check-equal? (interp (If (IdC 'true) (NumC 10) (NumC 20)) top-env) (NumV 10))
-(check-equal? (interp (If (IdC 'false) (NumC 10) (NumC 20)) top-env) (NumV 20))
-(check-equal?
-(interp (If (IdC 'true) (NumC 10) (AppC (IdC 'error) (list (StrC "custom error")))) top-env) (NumV 10))
-
-(check-exn (regexp (regexp-quote "custom error"))
-           (lambda ()
-             (interp
-              (If {AppC (IdC '<=) {list (NumC 4) (NumC 0)}}
-                  (NumC 10) (AppC {IdC 'error}
-                                  {list (StrC "custom error")})) top-env)))
-
-(check-exn (regexp (regexp-quote "DRMG: condition is not a boolean value"))
- (lambda () (interp (If (NumC 5) (NumC 10) (NumC 20)) top-env)))
-
-;testing local
-(check-equal? (interp (parse '{local {x = 4} {y = {+ 4 9}} in {* x y}}) top-env) {NumV 52})
-
-;testing out of scope vars
-(check-exn #rx"Binding was not found"
-           (lambda () (interp (parse '{local {x = 4} {y = {+ 4 x}} in {* x y}}) top-env)))
-
-;Extra 
-(check-exn (regexp (regexp-quote "DRMG: Number of Arguments are not equal"))
-           (lambda () (interp (parse '{{% x y -> x} 5}) top-env)))
-
-(check-exn (regexp "DRMG: Attempted to call a non-function")
-           (lambda () (interp (parse'{5 10}) top-env)))
-
-;---------------- Interp Prims Test Cases -------------------------
-; New Prim V test cases
-
-(check-exn (regexp "random expects a positive integer") (lambda () (top-interp  '{random -1})))
-(check-exn (regexp "random expects one argument") (lambda () (top-interp  '{random 1 10})))
- 
-
-; checking primitive operators 
-(check-equal? (interp-prim '+ (list (NumV 2) (NumV 3))) (NumV 5))  
-(check-equal? (interp-prim '- (list (NumV 10) (NumV 3))) (NumV 7))
-(check-equal? (interp-prim '- (list (NumV 3) (NumV 10))) (NumV -7))
-(check-equal? (interp-prim '* (list (NumV 4) (NumV 3))) (NumV 12))
-(check-equal? (interp-prim '* (list (NumV 5) (NumV 0))) (NumV 0))
-(check-equal? (interp-prim '/ (list (NumV 12) (NumV 3))) (NumV 4))
-(check-equal? (interp-prim '/ (list (NumV 5) (NumV 2))) (NumV 5/2))
-(check-equal? (interp-prim '<= (list (NumV 3) (NumV 5))) (BoolV #t))
-(check-equal? (interp-prim '<= (list (NumV 5) (NumV 3))) (BoolV #f))
-(check-equal? (interp-prim '<= (list (NumV 4) (NumV 4))) (BoolV #t))
-
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
-
-
-;checking primitive operator errors 
-(check-exn (regexp (regexp-quote "DRMG: Division by zero"))
- (lambda ()
-   (interp-prim '/ (list (NumV 5) (NumV 0)))))
-
-(check-exn
- (regexp "Expected two numbers" )
- (lambda ()
-   (interp-prim '+ (list (NumV 2) (StrV "hello")))))
-
-(check-exn
- (regexp "Expected two numbers" )
- (lambda ()
-   (interp-prim '- (list (NumV 2) (StrV "hello")))))
- 
-(check-exn
- (regexp "Expected two numbers" )
- (lambda ()
-   (interp-prim '* (list (NumV 2) (StrV "hello")))))
-(check-exn
- (regexp "Expected two numbers" )
- (lambda ()  
-   (interp-prim '/ (list (NumV 2) (StrV "hello")))))
-(check-exn
- (regexp "Expected two numbers" )
- (lambda ()
-   (interp-prim '<= (list (NumV 2) (StrV "hello")))))
-(check-exn
- (regexp (regexp-quote "DRMG: Expected two numbers"))
- (lambda ()
-   (interp-prim '+ (list (NumV 2)))))
-
-(check-exn
- (regexp (regexp-quote "DRMG: Expected two numbers")) 
- (lambda ()
-   (interp-prim '* (list (NumV 2) (NumV 3) (NumV 4)))))
-
-(check-exn
- (regexp (regexp-quote "DRMG: Unknown primitive operator"))
- (lambda () 
-   (interp-prim '? (list (NumV 2) (NumV 10)))))
-
-;testing custom errors
-(check-exn
- (regexp (regexp-quote "user-error: \"my custom error\""))
- (lambda ()
-   (interp-prim 'error (list (StrV "my custom error")))))
-
-(check-exn
- (regexp (regexp-quote "user-error: 3"))
- (lambda ()
-   (interp-prim 'error (list (NumV 3)))))
-
-(check-exn
- (regexp (regexp-quote "DRMG: error expects one argument"))
- (lambda () (interp-prim 'error (list (NumV 3) (StrV "hi")))))
-
-(check-exn
- (regexp (regexp-quote "DRMG: error expects one argument")) (lambda () (interp-prim 'error '())))
-
-;Checking string length function 
-(check-equal? (interp-prim 'strlen (list (StrV "hello"))) (NumV 5))
-(check-equal? (interp-prim 'strlen (list (StrV ""))) (NumV 0))
-(check-equal? (interp-prim 'strlen (list (StrV "hello world"))) (NumV 11))
-
-(check-exn
- (regexp "strlen expects one string" )
- (lambda ()
-   (interp-prim 'strlen (list (NumV 5)))))
-
-(check-exn
- (regexp (regexp-quote "DRMG: Unknown primitive operator"))
- (lambda ()
-   (interp-prim 'unknown (list (StrV "hello")))))
- 
-;Checks for substring function
-; Substring tests
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 4))) (StrV "ell"))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 5))) (StrV "hello"))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 0) (NumV 0))) (StrV ""))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 2))) (StrV ""))
-(check-equal? (interp-prim 'substring (list (StrV "hello") (NumV 2) (NumV 5))) (StrV "llo"))
-  
-; Negative starting index
-(check-exn (regexp (regexp-quote "DRMG: Invalid substring indices"))
- (lambda () (interp-prim 'substring (list (StrV "hello") (NumV -1) (NumV 2)))))
- 
-; Negative ending index
-(check-exn (regexp (regexp-quote "DRMG: Invalid substring indices"))
- (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV -1)))))
-
-; Ending index exceeds string length
-(check-exn (regexp (regexp-quote "DRMG: Range exceeds string length"))
- (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1) (NumV 6)))))
-
-; Ending index is less than starting index
-(check-exn (regexp (regexp-quote "DRMG: Second input is less than first input")) (lambda ()
-   (interp-prim 'substring (list (StrV "hello") (NumV 4) (NumV 2)))))
-
-; Wrong number of arguments
-(check-exn (regexp "Invalid substring arguments")
- (lambda () (interp-prim 'substring (list (StrV "hello") (NumV 1)))))
-
-(check-exn(regexp (regexp-quote "DRMG: Unknown primitive operator"))
- (lambda () (interp-prim 'function (list (StrV "hello") (NumV 1) (NumV 3)))))
-
-;; equal? — numbers
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (NumV 5) (NumV 6))) (BoolV #f))
-
-;; equal? — booleans
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #t))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
-
-;; equal? — strings
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
-(check-equal? (interp-prim 'equal? (list (StrV "hello") (StrV "world"))) (BoolV #f))
-
-;; equal? — different types
-(check-equal? (interp-prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
-(check-equal? (interp-prim 'equal? (list (BoolV #t) (NumV 1))) (BoolV #f))
-
-;; equal? — closures and primitive operators
-(check-equal? (interp-prim 'equal? 
-(list (CloV '() (NumC 5) top-env) (CloV '() (NumC 5) top-env))) (BoolV #f))
-
-(check-equal? (interp-prim 'equal? (list (PrimV '+) (PrimV '+))) (BoolV #f))
-;; Wrong number of arguments
-(check-exn (regexp "interp-prim: DRMG: equal\\? expects two arguments")
- (lambda () (interp-prim 'equal? (list (NumV 5)))))
-
-(check-exn (regexp "equal\\? expects two arguments") (lambda () (interp-prim 'equal? (list (NumV 5)))))
-
-;; Wrong number of arguments
-(check-exn
- (regexp "equal\\? expects two arguments")
- (lambda ()
-   (interp-prim 'equal? (list (NumV 5)))))
-
-(check-exn (regexp "equal\\? expects two arguments") (lambda () (interp-prim 'equal? '())))
 
