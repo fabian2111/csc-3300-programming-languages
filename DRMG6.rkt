@@ -257,11 +257,15 @@
        [else (AppC (LamC (map IdC vs) (parse expr2)) (map parse (cast expr (Listof Sexp))))])]
     
     ;finish mutation rule
-    #;[(list var ':= val)
+    [(list (? symbol? var) ':= val)
      (define valid (valid-id? var))
      (if (not valid)
          (error 'parse "DRMG: Reserved word used as variable")   
-         (parse val))]
+         (MutC (IdC var) (parse val)))]
+    [(list 'rocal (list (? symbol? name) '= expr) 'in body)
+     (cond
+       [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
+       [else (error 'parse "DRMG: reserved word used as rocal variable ")])]
        
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
@@ -309,8 +313,20 @@
      (define base (allocate sto len))
      (fill-store! vals base sto)
      (ArrV base len)]))
+
+;; repeat-value: a list containing n copies of v
+(define (repeat-value [n : Natural] [v : Value]) : (Listof Value)
+  (cond
+    [(zero? n) '()]
+    [else (cons v (repeat-value (- n 1) v))]))
+
+;; check-index: returns idx as a Natural if 0 <= idx < len, errors otherwise
+(define (check-index [idx : Real] [len : Natural]) : Natural
+  (cond
+    [(and (exact-nonnegative-integer? idx) (< idx len)) idx]
+    [else (error 'array "DRMG: index ~v out of range for array of length ~v" idx len)]))
   
-;----------------- drmg 5 helpers -------------------
+;----------------- Println/read-input Helpers -------------------
 
 ;takes in a list of Values and checks if it meets the arity of println
 (define (println-drmg [args : (Listof Value)]) : BoolV
@@ -420,6 +436,25 @@
             (NumV (random (cast n Integer))) 
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
+
+    ; Array cases
+    ['make-array
+     (match args
+       [(list (NumV  (? exact-positive-integer? n)) v)
+        (new-array  (repeat-value n v) sto)]
+       [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])] 
+    ['array (new-array args sto)]
+    ['aref
+     (match args
+       [(list (ArrV base len) (NumV idx))
+        (vector-ref sto (+ base len))]
+       [_ (error 'interp-prim "DRMG: aref expects an array and an index")])]
+    ['aset!
+     (match args
+       [(list (ArrV base len) (NumV idx) v)
+        (vector-set! sto (+ base (check-index idx len)) v)
+        (NullV)]
+       [_ (error 'interp-prim "DRMG: aset! expects an array, an index and a value")])]
 
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")])) 
 
