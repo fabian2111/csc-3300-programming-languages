@@ -290,6 +290,26 @@
      (extend-env p-rest val-rest (cons (Bind p-first location) env) sto)]
     [(_ _) (error 'extend-env "DRMG: parameter/argument count mismatch")]))
 
+
+
+;------ Making a Array (With populate helper function)
+(define (fill-store! [vals :(Listof Value)] [start : Natural] [sto : Store]) : Void
+  (match vals
+    ['() (void)]
+    [(cons val rest-vals)
+     (vector-set! sto start val)
+     (fill-store! rest-vals (+ start 1) sto)]))
+  
+;Make Array function
+(define (new-array [vals : (Listof Value)] [sto : Store])
+  (define len (length vals))
+  (cond
+    [(< len 1 ) (error 'new-array "DRMG: arrays need at least one cell")]
+    [else
+     (define base (allocate sto len))
+     (fill-store! vals base sto)
+     (ArrV base len)]))
+  
 ;----------------- drmg 5 helpers -------------------
 
 ;takes in a list of Values and checks if it meets the arity of println
