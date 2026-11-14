@@ -38,7 +38,7 @@
 
 (struct Cell ([location : Integer] [val : Value]) #:transparent)
 
-(define-type Store (Vectorof Value))
+(define-type Store (Vectorof Any))
 (struct InitialBinding ([name : Symbol] [val : Value]) #:transparent)
 (struct Bind ([name : Symbol] [location : Location]) #:transparent)
 
@@ -68,33 +68,6 @@
     (InitialBinding 'aref (PrimV 'aref))
     (InitialBinding 'aset! (PrimV 'aset!))))
 
-#;(define top-env
-  (list
-    (Bind 'true 0)
-    (Bind 'false 1)
-    (Bind '+ 2)
-    (Bind '- 3)
-    (Bind '* 4)
-    (Bind '/ 5)
-    (Bind '<= 6)
-    (Bind 'substring 7)
-    (Bind 'strlen 8)
-    (Bind 'equal? 9)
-    (Bind 'error 10)
-    (Bind 'println 11)
-    (Bind 'read-num 12)
-    (Bind 'read-str 13)
-    (Bind 'begin 14)
-    (Bind '++ 15)
-    ;(Bind 'random 16)
-
-    ; DRMG6 new functions
-    (Bind 'make-array 16)
-    (Bind 'array 17)
-    (Bind 'aref 18)
-    (Bind 'aset! 19)))
-
-
 
 ;reserved keywords
 (define reserved '(if = local % -> in := rocal))
@@ -107,8 +80,6 @@
 ; ---------------- store functions ----------
 
 (define (add-to-store [sto : Store] [value : Value]) : Location
-  ;(match value
-   ; [(ArrV loc len)
   (define loc (allocate sto 1))
   (vector-set! sto loc value)
   loc)
@@ -116,7 +87,8 @@
 
 
 (define (make-initial-store [memsize : Natural]) : Store
-  (define store : Store (make-vector memsize (NullV)))
+  ;(define store : Store (make-vector memsize (NullV)))
+  (define store : Store (make-vector memsize 0))
   ;(vector-set! store 0 1)
   (populate-store store top-env)
   store)
@@ -136,21 +108,14 @@
       (Bind (InitialBinding-name current) location)
       (populate-store sto (rest bindings)))]))
 
-  #;(define (populate-store [sto : Store] [bindings : (Listof Bind)]) : Env
-  (cond
-    [(empty? bindings) empty]
-    [else
-     (define current (first bindings))
-     (define location (allocate sto 1))
-     (vector-set! sto location (PrimV (Bind-name current)))
-     (cons
-      (Bind (Bind-name current) location)
-      (populate-store sto (rest bindings)))]))
-
-
 
 ; probably for making arrays
 ;(define (allocate [sto : Store] [locations : Integer]) : Location
+
+#;(define (find-next-loc [sto : Store] [curLoc : Natural]) : Location
+  (if (equal? (vector-ref sto curLoc) (NullV)
+  )))
+
   
 (define (allocate [sto : Store] [size : Natural]) : Location
   (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
@@ -158,12 +123,13 @@
   (cond
     [(> next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
     [else
-     (vector-set! sto 0 next) start]))
+     ;i think adding 1 to start should fix cuz i think what you are trying to do is make the 0th value the length
+     (vector-set! sto 0 next) (+ start 1)]))
  
-(define my-store (make-initial-store 20))
-(check-equal? (allocate my-store 4) 1)
-(check-equal? (allocate my-store 3) 5)
-(check-equal? (vector-ref my-store 0) 8)
+;(define my-store (make-initial-store 50))
+;(check-equal? (allocate my-store 4) 1)
+;(check-equal? (allocate my-store 3) 5)
+;(check-equal? (vector-ref my-store 0) 8)
 
 
 
@@ -256,12 +222,14 @@
         (error 'parse "DRMG: Duplicate variables in local")]
        [else (AppC (LamC (map IdC vs) (parse expr2)) (map parse (cast expr (Listof Sexp))))])]
     
+    
     ;finish mutation rule
     [(list (? symbol? var) ':= val)
      (define valid (valid-id? var))
      (if (not valid)
          (error 'parse "DRMG: Reserved word used as variable")   
          (MutC (IdC var) (parse val)))]
+    
     [(list 'rocal (list (? symbol? name) '= expr) 'in body)
      (cond
        [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
@@ -447,7 +415,9 @@
     ['aref
      (match args
        [(list (ArrV base len) (NumV idx))
-        (vector-ref sto (+ base len))]
+
+        ;cast this to value, maybe change vector type to avoid cast but idk
+       (cast (vector-ref sto (+ base len)) Value)]
        [_ (error 'interp-prim "DRMG: aref expects an array and an index")])]
     ['aset!
      (match args
@@ -507,6 +477,16 @@
        [(BoolV #f) (interp else env sto)]
        [_ (error 'interp "DRMG: condition is not a boolean value")])]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
+
+    ;rocal, man i dont want to do this anymore, can we just be chuds and grind out the fortnite token
+    [(RocalC name rhs body)
+     (define location (allocate sto 1))
+     (define new-bind (Bind (IdC-sym name) location))
+     (add-to-store sto (interp rhs env sto))
+     (define new-env (cons new-bind env))
+     (interp body new-env sto)]
+     
+      
     ;; copied and pasted changed a couple things (ts is not correct feel free to change)
     [(AppC func args)
      (define fundef (interp func env sto))
@@ -528,6 +508,12 @@
                [(PrimV op) (interp-prim op arg-vals sto)]
                [_ (error 'interp "DRMG: Attempted to call a non-function")])]
     ))
+
+(define rocal (parse '{rocal [x = 3] in x}))
+
+(interp rocal initial-env (make-initial-store 50))
+
+
 
 ;----------------------------- top interp -------------------------------
 
