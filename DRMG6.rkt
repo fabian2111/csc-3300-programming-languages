@@ -108,7 +108,7 @@
       (Bind (InitialBinding-name current) location)
       (populate-store sto (rest bindings)))]))
 
-
+ 
 ; probably for making arrays
 ;(define (allocate [sto : Store] [locations : Integer]) : Location
 
@@ -394,7 +394,7 @@
      (define input-val (read-input))
      (if (equal? input-val #f)
          (error "DRMG: invalid input for read-str")
-         (cast input-val StrV))]
+         (cast input-val StrV))] 
     ['begin (last args)]
     ['++ (StrV (concat-drmg args))]
     ['random
@@ -431,7 +431,7 @@
     
 ; ------------------------------- Interp ------------------------------------------------
 
-;takes in an exprC and an environment and it uses the
+;takes in an exprC and an environment and it uses the 
 ;environment to interpret the expression into a value
 #;(define (interp [e : ExprC] [env : Env]) : Value
   (match e
@@ -479,12 +479,21 @@
     [(LamC args body) (CloV (map IdC-sym args) body env)]
 
     ;rocal, man i dont want to do this anymore, can we just be chuds and grind out the fortnite token
-    [(RocalC name rhs body)
+    #;[(RocalC name rhs body)
      (define location (allocate sto 1))
      (define new-bind (Bind (IdC-sym name) location))
      (add-to-store sto (interp rhs env sto))
      (define new-env (cons new-bind env))
      (interp body new-env sto)]
+  
+     [(RocalC name rhs body)
+ (define location (allocate sto 1))
+ (define new-bind (Bind (IdC-sym name) location))
+ (define new-env (cons new-bind env))
+ (vector-set! sto location (interp rhs new-env sto))
+ (interp body new-env sto)]
+
+   
      
       
     ;; copied and pasted changed a couple things (ts is not correct feel free to change)
@@ -511,10 +520,11 @@
 
 (define rocal (parse '{rocal [x = 3] in x}))
 
+(parse '{rocal [x = 3] in x})
 (interp rocal initial-env (make-initial-store 50))
 
 
-
+ 
 ;----------------------------- top interp -------------------------------
 
 ;takes in a sexp and returns a serialized string containing a value
