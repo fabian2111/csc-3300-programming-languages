@@ -36,13 +36,47 @@
 ;store
 ;(define-type Store (Vector Cell))
 
-(struct Cell ([location : Integer] [val : Value]) #:transparent)
+;(struct Cell ([location : Integer] [val : Value]) #:transparent)
 
-(define-type Store (Vectorof Any))
+;hopefully this works fully
+(define-type StoreValue (U Location Value))
+
+(define-type Store (Vectorof StoreValue))
 (struct InitialBinding ([name : Symbol] [val : Value]) #:transparent)
 (struct Bind ([name : Symbol] [location : Location]) #:transparent)
 
+;i think you will need both this and initial env, since you already know the location values initially.
+;doing this helped the issues that i was having
+;then again, im not too sure so feel free to change
 (define top-env
+  (list
+   (Bind 'true 1)
+   (Bind 'false 2)
+   (Bind '+ 3)
+   (Bind '- 4)
+   (Bind '* 5)
+   (Bind '/ 6)
+   (Bind '<= 7)
+   (Bind 'substring 8)
+   (Bind 'strlen 9)
+   (Bind 'equal? 10)
+   (Bind 'error 11)
+   (Bind 'println 12)
+   (Bind 'read-num 13)
+   (Bind 'read-str 14)
+   (Bind 'begin 15)
+   (Bind '++ 16)
+   (Bind 'random 17)
+   (Bind 'make-array 18)
+   (Bind 'array 19)
+   (Bind 'aref 20)
+   (Bind 'aset! 21)
+
+   ;i dont know if you need to make while a prim value, but i think it might be 
+   ;(Bind 'while 22)
+   ))
+
+(define initial-env
   (list
     (InitialBinding 'true (BoolV #t))
     (InitialBinding 'false (BoolV #f))
@@ -66,7 +100,9 @@
     (InitialBinding 'make-array (PrimV 'make-array))
     (InitialBinding 'array (PrimV 'array))
     (InitialBinding 'aref (PrimV 'aref))
-    (InitialBinding 'aset! (PrimV 'aset!))))
+    (InitialBinding 'aset! (PrimV 'aset!))
+    ;(InitialBinding 'while (PrimV 'while))
+    ))
 
 
 ;reserved keywords
@@ -79,34 +115,34 @@
 
 ; ---------------- store functions ----------
 
-(define (add-to-store [sto : Store] [value : Value]) : Location
+#;(define (add-to-store [sto : Store] [value : Value]) : Location
   (define loc (allocate sto 1))
   (vector-set! sto loc value)
   loc)
   
 
-
 (define (make-initial-store [memsize : Natural]) : Store
   ;(define store : Store (make-vector memsize (NullV)))
   (define store : Store (make-vector memsize 0))
   ;(vector-set! store 0 1)
-  (populate-store store top-env)
+  (populate-store store initial-env)
   store)
 ;-------------
 
 #;(define (populate-store [vec : Vector] [env : Env] [location : Integer]) : Store
 
   )
-(define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Env
+(define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Null
   (cond
     [(empty? bindings) empty]
     [else
      (define current (first bindings))
      (define location (allocate sto 1))
      (vector-set! sto location (InitialBinding-val current))
-     (cons
-      (Bind (InitialBinding-name current) location)
-      (populate-store sto (rest bindings)))]))
+     (populate-store sto (rest bindings))]))
+     ;(cons
+      ;(Bind (InitialBinding-name current) location)
+      ;(populate-store sto (rest bindings)))]))
 
  
 ; probably for making arrays
@@ -116,7 +152,7 @@
   (if (equal? (vector-ref sto curLoc) (NullV)
   )))
 
-  
+
 (define (allocate [sto : Store] [size : Natural]) : Location
   (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
   (define next (+ start size))
@@ -132,9 +168,13 @@
 ;(check-equal? (vector-ref my-store 0) 8)
 
 
+;only for testing
+;(define initial-store : Store (make-initial-store 100))
 
-(define initial-env : Env
-  (populate-store (make-initial-store 100) top-env))
+;dont think this is needed as top interp will make it for you
+;also this ended up calling populate store twice
+#;(define initial-env : Env
+  (populate-store initial-store top-env))
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -148,9 +188,7 @@
     [(CloV _ _ _) "#<procedure>"]
     [(PrimV _ ) "#<primop>"]
     [(NullV) "null"]
-    [(ArrV _ _) "#<array>"]
-    
-    ))
+    [(ArrV _ _) "#<array>"]))
 
 
 ; ---------------------------------Look Up for Variable in Environment-------------------------------
@@ -162,6 +200,9 @@
       [(empty? env) (error 'lookup "DRMG: Binding was not found for ~v" sym)]
       [(symbol=? sym (Bind-name (first env))) (Bind-location (first env))]
       [else (lookup sym (rest env))]))
+
+;(lookup '+ top-env)
+;(vector-ref initial-store 3)
 
 
 ;----------------- Helper func to find duplicate variables and Invalid Variables ----------------------
@@ -234,6 +275,11 @@
      (cond
        [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
        [else (error 'parse "DRMG: reserved word used as rocal variable ")])]
+
+    ; i thinkkk its somewhat like this, i need to fully understand what the instructions are saying
+    ; i might be wrong on this so change it however you like,  not fully sure if it needs to be in parser
+    
+    [(list 'while guard body) (RocalC (IdC 'while) (parse guard) (parse body))]
        
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
@@ -426,6 +472,14 @@
         (NullV)]
        [_ (error 'interp-prim "DRMG: aset! expects an array, an index and a value")])]
 
+    ;need to finish while
+    ;['while
+     ;(match args
+      ; [(list guard body)
+       ; (if guard
+        ;    body
+        
+
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")])) 
 
     
@@ -433,6 +487,8 @@
 
 ;takes in an exprC and an environment and it uses the 
 ;environment to interpret the expression into a value
+
+;dead code, already failing software engineering i see...
 #;(define (interp [e : ExprC] [env : Env]) : Value
   (match e
     [(IdC s) (lookup s env)]
@@ -479,24 +535,34 @@
     [(LamC args body) (CloV (map IdC-sym args) body env)]
 
     ;rocal, man i dont want to do this anymore, can we just be chuds and grind out the fortnite token
-    #;[(RocalC name rhs body)
+    [(RocalC name rhs body)
      (define location (allocate sto 1))
-     (define new-bind (Bind (IdC-sym name) location))
-     (add-to-store sto (interp rhs env sto))
-     (define new-env (cons new-bind env))
-     (interp body new-env sto)]
-  
-     [(RocalC name rhs body)
- (define location (allocate sto 1))
- (define new-bind (Bind (IdC-sym name) location))
- (define new-env (cons new-bind env))
- (vector-set! sto location (interp rhs new-env sto))
- (interp body new-env sto)]
-
-   
+     (define roc-sym (IdC-sym name))
      
-      
-    ;; copied and pasted changed a couple things (ts is not correct feel free to change)
+     (define new-bind (Bind roc-sym location))
+     (define new-env (cons new-bind env))
+     (vector-set! sto location (interp rhs new-env sto))
+     
+
+     ;lowkey dont know if this is what you're supposed to do
+     (cond
+       [(equal? roc-sym 'while) (define guard-result (interp rhs new-env sto))
+                                (match guard-result
+                                  [(BoolV #t) (interp body new-env sto) (interp e new-env sto)]
+                                  [(BoolV #f) (NullV)])]
+       [else (interp body new-env sto)]
+       )]
+
+    ;mutations, i want to finally let my inner chud take control so that i can play hollow knight, and silksong (hollow knight pt 2) and gta 6 all day
+    ;and pirate token, pirate token
+    [(MutC var val)
+     (define location (lookup (IdC-sym var) env))
+     (vector-set! sto location (interp val env sto))
+     (NullV)]
+
+  
+     
+    ;; copied and pasted changed a couple things (ts is not correct feel free to change), nah do it again
     [(AppC func args)
      (define fundef (interp func env sto))
      (define arg-vals (interp-args args env sto))
@@ -518,13 +584,32 @@
                [_ (error 'interp "DRMG: Attempted to call a non-function")])]
     ))
 
-(define rocal (parse '{rocal [x = 3] in x}))
+;(define rocal (parse '{rocal [fact = {% n -> {if (<= n 0) 1 {* n {fact {- n 1}}}}}] in {fact 4}}))
 
-(parse '{rocal [x = 3] in x})
-(interp rocal initial-env (make-initial-store 50))
+;(parse '{rocal [x = 3] in x})
+;(define test (parse '{+ 1 2}))
+
+;ts works!!!, maybe... gotta test more 
+(define val (parse '{local [x = 4] in {begin {println {++ "" x}} {x := "1738"} {println x}}}))
+
+;should error when interping
+(define cant-mutate (parse '{x := 4}))
+
+;suprising works but needs more testing ofc, lowkey double check if im implementing the while function in the right locations (interp, interp-prim, etc)
+; also found out that x = x + 1 does work as expected if we are supposed to do that
+(define while-thing (parse '{local [x = 0] in {begin {while {<= x 4} {begin {println {++ "" x}} {x := {+ x 1}}}} {println "done"}}}))
+
+(define func (parse '{{% a b -> {+ a b}} 4 5}))
+
+(interp while-thing top-env (make-initial-store 80))
+
+;test cases, grrr
+(check-equal? (parse '{x := 4}) (MutC (IdC 'x) (NumC 4)))
+(check-equal? (parse '{x := "y"}) (MutC (IdC 'x) (StrC "y")))
+
+;(check-equal? (interp (MutC (IdC 'x) (NumC 3)) top-env (make-initial-store 30))
 
 
- 
 ;----------------------------- top interp -------------------------------
 
 ;takes in a sexp and returns a serialized string containing a value
@@ -533,5 +618,5 @@
 
 ; DRMG 6 version of top interp
 (define (top-interp [s : Sexp] [memsize : Natural]) : String
-  (serialize (interp (parse s) initial-env (make-initial-store memsize))))
+  (serialize (interp (parse s) top-env (make-initial-store memsize))))
 
