@@ -205,16 +205,17 @@
      (define valid (valid-id? var))
      (define val-valid (valid-id? val))
      (if  (not valid) 
-         (error 'parse "DRMG: Reserved word used as variable")
+         (error 'parse "DRMG: Reserved word used as variable") 
          (MutC (IdC var) (parse val)))]
     [(list 'rocal (list (? symbol? name) '= expr) 'in body)
      (cond
        [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
        [else (error 'parse "DRMG: reserved word used as rocal variable ")])]
     [(list fun args ...) (AppC (parse fun) (map parse args))]
-    [_ (error 'parse "DRMG: Invalid syntax")])) 
+    [_ (error 'parse "DRMG: Invalid syntax")]))
 
-  
+
+   
 ;------- interp helper for multiple arguements ---------
 
 ;Takes in a list of args and the environment and it evaluates the args
@@ -223,7 +224,7 @@
   (match args
     ['()'()]
     [(cons first rest)
-     (define interp-first (interp first env sto))
+     (define interp-first (interp first env sto)) 
      (cons interp-first
            (interp-args rest env sto))]))
 
@@ -236,6 +237,8 @@
      (vector-set! sto location val-first)
      (extend-env p-rest val-rest (cons (Bind p-first location) env) sto)]
     [(_ _) (error 'extend-env "DRMG: parameter/argument count mismatch")]))
+
+
 
 ;------ Making a Array (With populate helper function)
 (define (fill-store! [vals :(Listof Value)] [start : Natural] [sto : Store]) : Void
@@ -442,7 +445,19 @@
 (check-exn (regexp "DRMG:") (lambda () (make-initial-store 0)))
 (check-equal?(serialize (NullV)) "null")
  
-(check-equal?(serialize (ArrV 10 1)) "#<array>") 
+(check-equal?(serialize (ArrV 10 1)) "#<array>")
+
+;; := on a reserved word
+(check-exn #rx"DRMG: Reserved word used as variable"
+           (lambda () (parse '{in := 3})))
+
+;; rocal on a reserved word 
+(check-exn #rx"DRMG: reserved word used as rocal variable"
+           (lambda () (parse '{rocal [if = 1] in 2})))
+
+;; nothing matches (empty list reaches the final clause)
+(check-exn #rx"DRMG: Invalid syntax"
+           (lambda () (parse '())))
 
 
 ;------------------ Println ------------------------------
@@ -455,6 +470,14 @@
 (check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
            (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
 (check-exn (regexp "println expects one string argument") (lambda () (println-drmg (list (NumV 5) (NumV 10)))))
+;; extend-env binds each param to a fresh location holding its value
+(define sto-ext : Store (make-initial-store 100))
+(define env-ext (extend-env '(a b) (list (NumV 1) (StrV "two")) top-env sto-ext))
+(check-equal? (vector-ref sto-ext (lookup 'b env-ext)) (StrV "two"))
+
+;; count mismatch
+(check-exn #rx"DRMG: parameter/argument count mismatch"
+           (lambda () (extend-env '(a b) (list (NumV 1)) top-env (make-initial-store 100))))
 
 ;------------------ Concat (++) ------------------
 
