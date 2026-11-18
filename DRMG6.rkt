@@ -28,16 +28,9 @@
 (struct RocalC ([name : IdC] [rhs : ExprC] [body : ExprC]) #:transparent)
 
 
-
+;Store
 (define-type Location Natural)
-;store
-;(define-type Store (Vector Cell))
-
-;(struct Cell ([location : Integer] [val : Value]) #:transparent)
-
-;hopefully this works fully
 (define-type StoreValue (U Location Value))
-
 (define-type Store (Vectorof StoreValue))
 (struct InitialBinding ([name : Symbol] [val : Value]) #:transparent)
 (struct Bind ([name : Symbol] [location : Location]) #:transparent)
@@ -59,7 +52,7 @@
           {if {<= arrlen 1}
               {res := true}
               {while {% -> {<= curLoc {- arrlen 2}}}
-                     {% -> {begin {res := {<= {aref arr curLoc} {aref arr {+ curLoc 1}}}}
+                     {% -> {begin {res := {<= {aref arr curLoc} {- {aref arr {+ curLoc 1}} 1}}}
                                   {curLoc := {+ curLoc 1}}}}}}
           res}}})
 
@@ -70,12 +63,11 @@
    (Bind '* 5) (Bind '/ 6)
    (Bind '<= 7) (Bind 'substring 8)
    (Bind 'strlen 9) (Bind 'equal? 10)
-   (Bind 'error 11) (Bind 'println 12)
-   (Bind 'read-num 13) (Bind 'read-str 14)
-   (Bind 'begin 15) (Bind '++ 16)
-   (Bind 'random 17) (Bind 'make-array 18)
-   (Bind 'array 19) (Bind 'aref 20)
-   (Bind 'aset! 21) (Bind 'arr-len 22)))
+   (Bind 'error 11) (Bind 'println 12) 
+   (Bind 'begin 13) (Bind '++ 14)
+   (Bind 'make-array 15) (Bind 'array 16)
+   (Bind 'aref 17) (Bind 'aset! 18)
+   (Bind 'arr-len 19)))
 
 (define initial-env
   (list
@@ -85,11 +77,10 @@
     (InitialBinding '<= (PrimV '<=)) (InitialBinding 'substring (PrimV 'substring))
     (InitialBinding 'strlen (PrimV 'strlen)) (InitialBinding 'equal? (PrimV 'equal?))
     (InitialBinding 'error (PrimV 'error)) (InitialBinding 'println (PrimV 'println))
-    (InitialBinding 'read-num (PrimV 'read-num)) (InitialBinding 'read-str (PrimV 'read-str))
     (InitialBinding 'begin (PrimV 'begin)) (InitialBinding '++ (PrimV '++))
-    (InitialBinding 'random (PrimV 'random)) (InitialBinding 'make-array (PrimV 'make-array))
-    (InitialBinding 'array (PrimV 'array)) (InitialBinding 'aref (PrimV 'aref))
-    (InitialBinding 'aset! (PrimV 'aset!)) (InitialBinding 'arr-len (PrimV 'arr-len))))
+    (InitialBinding 'make-array (PrimV 'make-array)) (InitialBinding 'array (PrimV 'array))
+    (InitialBinding 'aref (PrimV 'aref)) (InitialBinding 'aset! (PrimV 'aset!))
+    (InitialBinding 'arr-len (PrimV 'arr-len))))
 
 
 ;reserved keywords
@@ -97,8 +88,8 @@
 
 ;-----------------  store functions ------------
 
+;takes in a memory size and returns a populated store
 (define (make-initial-store [memsize : Natural]) : Store
-  ;(define store : Store (make-vector memsize (NullV)))
   (cond
     [(< memsize 1) (error 'make-initial-store "DRMG: Store length should be minimum 1")]
     [else
@@ -108,6 +99,7 @@
 
 ;-------------
 
+;initially populates the store by inputting the top env bindings into the store
 (define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Void
   (cond
     [(empty? bindings) (void)]
@@ -124,9 +116,6 @@
   (cond 
     [(>= next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
     [else (vector-set! sto 0 next) {+ start 1}]))
-
-;only for testing
-(define initial-store : Store (make-initial-store 100))
 
 ; ----------------------------------------Serialize -------------------------------------------
 
@@ -272,14 +261,6 @@
     [(zero? n) '()]
     [else (cons v (repeat-value (- n 1) v))]))
 
-;; fill-with!: stores v in n consecutive cells starting at start
-(define (fill-with! [start : Natural] [n : Natural] [v : Value] [sto : Store]) : Void
-  (cond
-    [(zero? n) (void)]
-    [else
-     (vector-set! sto start v)
-     (fill-with! (+ start 1) (- n 1) v sto)]))
-
 ;; check-index: returns idx as a Natural if 0 <= idx < len, errors otherwise
 (define (check-index [idx : Real] [len : Natural]) : Natural
   (cond
@@ -294,14 +275,6 @@
        [(list (StrV s)) (println s) (BoolV #t)]
        [_ (error "DRMG: println expects one string argument")]))
 
-;reads input from the user and returns a StrV of the user input
-;if it is valid or false if the input is invalid
-(define (read-input) : (U StrV #f)
-  (printf "> ")
-  (define input-val (read-line))
-  (if (string? input-val)
-      (StrV (cast input-val String))
-      #f))
 
 ;takes in a list of Values and concatenates all of them into one string
 (define (concat-drmg [args : (Listof Value)]) : String
@@ -376,29 +349,9 @@
      (match args
        [(list any) (error 'user-error (serialize any))]
        [_ (error 'interp-prim "DRMG: error expects one argument")])]
-
     ['println (println-drmg args)]
-    ['read-num
-     (define input-val (read-input))
-     (match input-val
-       [(StrV str) (if (real? (string->number str))
-                    (NumV (cast (string->number str) Real))
-                    (error "DRMG: read-num expects a number value"))]
-       [_ (error "DRMG: invalid input for read-num")])]
-    ['read-str
-     (define input-val (read-input))
-     (if (equal? input-val #f)
-         (error "DRMG: invalid input for read-str")
-         (cast input-val StrV))]
     ['begin (last args)]
     ['++ (StrV (concat-drmg args))]
-    ['random
-     (match args
-       [(list (NumV n))
-        (if (exact-positive-integer? n)
-            (NumV (random (cast n Integer)))
-            (error 'interp-prim "random expects a positive integer"))]
-       [_ (error 'interp-prim "random expects one argument")])]
     ['make-array
      (match args
        [(list (NumV (? exact-positive-integer? n)) v)
@@ -420,7 +373,6 @@
      (match args
        [(list (ArrV base len)) (NumV (ArrV-len (first args)))]
        [_ (error 'interp-prim "DRMG: arr-len expects an array")])]
-
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")]))
 
 ; ------------------------------- Interp ------------------------------------------------
@@ -475,6 +427,15 @@
                in {begin {while {% -> {<= x 4}} {% -> {x := {+ x 1}}}}
                          x}} 100) "5")
 
+(check-equal? (top-interp '{local [arr = {array 1 2 3}] in
+                             {in-order arr 3}} 50) "true")
+
+(check-equal? (top-interp '{local [arr = {array 1 3 3}] in
+                                       {in-order arr 3}} 50) "false")
+
+(check-equal? (top-interp '{local [arr = {array 3 2 1}] in
+                             {in-order arr 3}} 50) "false")
+
 
 
 ;---------------------------------------- Tests -------------------------------------
@@ -518,6 +479,7 @@
         (StrV ", Winner: ")
         (BoolV #t)))
  "Player: Rock, Score: 10, Winner: true")
+
 ;begin
 (check-equal? (interp-prim 'begin (list {NumV 3} {StrV "test"})(make-initial-store 50)) {StrV "test"} )
 (check-equal? (interp-prim 'begin (list {NumV 6}) (make-initial-store 50) ) {NumV 6})
@@ -537,7 +499,7 @@
 ;; top-level primitives map to their store locations
 (check-equal? (lookup '+ top-env) 3)
 (check-equal? (lookup 'true top-env) 1)
-(check-equal? (lookup 'aset! top-env) 21)
+(check-equal? (lookup 'aset! top-env) 18)
 ;; the location holds the value, so check the store too
 (check-equal? (vector-ref (make-initial-store 50) (lookup '+ top-env)) (PrimV '+))
 
@@ -612,6 +574,7 @@
 (check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '(if = 0 1))))
 (check-exn (regexp "DRMG: Reserved word used as local variable") (lambda () (parse '(local (local = "") in "World"))))
 (check-exn (regexp "DRMG: Reserved DRMG word used as parameter") (lambda () (parse '(% if -> 3))))
+
 ;------------------------------- Interp Test Cases -----------------------
 
 ;; test setup: a store where x lives at a real location and holds (NumV 4)
@@ -723,15 +686,15 @@
 (check-equal? (prim '++ (list (StrV "a") (NumV 1) (BoolV #t))) (StrV "a1true"))
 
 ;; arrays
-(check-equal? (prim 'make-array (list (NumV 3) (NumV 0))) (ArrV 23 3))
-(check-equal? (prim 'array (list (NumV 1) (NumV 2))) (ArrV 23 2))
+(check-equal? (prim 'make-array (list (NumV 3) (NumV 0))) (ArrV 20 3))
+(check-equal? (prim 'array (list (NumV 1) (NumV 2))) (ArrV 20 2))
 (define sto-arr : Store (make-initial-store 100))
 (define arr1 (interp-prim 'array (list (NumV 5) (NumV 6) (NumV 7)) sto-arr))
 (check-equal? (interp-prim 'aref (list arr1 (NumV 2)) sto-arr) (NumV 7))
 (check-equal? (interp-prim 'aset! (list arr1 (NumV 0) (StrV "x")) sto-arr) (NullV))
 (check-equal? (interp-prim 'aref (list arr1 (NumV 0)) sto-arr) (StrV "x"))
 ;; a second array is allocated right after the first
-(check-equal? (interp-prim 'array (list (NumV 1)) sto-arr) (ArrV 26 1))
+(check-equal? (interp-prim 'array (list (NumV 1)) sto-arr) (ArrV 23 1))
  
 ;; primitive errors
 (check-exn (regexp (regexp-quote "DRMG: Division by zero"))
@@ -749,6 +712,7 @@
 (check-exn #rx"DRMG" (lambda () (interp-prim 'aref (list arr1 (NumV -1)) sto-arr)))
 (check-exn #rx"DRMG" (lambda () (interp-prim 'aset! (list arr1 (NumV 3) (NumV 0)) sto-arr)))
 (check-exn #rx"DRMG" (lambda () (prim 'aref (list (NumV 1) (NumV 0)))))
+
 ;; more arithmetic errors
 (check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '+ (list (NumV 2))))) 
 (check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '* (list (NumV 2) (NumV 3) (NumV 4)))))
@@ -788,3 +752,6 @@
 (check-equal? (top-interp '{equal? {array 1} {array 1}} 100) "false")
 (check-equal? (top-interp '{rocal [f = {% n -> {if {<= n 0} 0 {+ n {f {- n 1}}}}}] in {f 3}} 200) "6")
 (check-exn #rx"DRMG" (lambda () (top-interp '{make-array 1000 0} 100)))
+
+
+
