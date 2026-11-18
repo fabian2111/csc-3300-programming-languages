@@ -108,12 +108,7 @@
 ;reserved keywords
 (define reserved '(if = local % -> in := rocal))
 
-;-----------------  store ------------------
-;(define-type Store (something))
-;(define sto ( something idk))
-
-
-; ---------------- store functions ----------
+;-----------------  store functions ------------aaert
 
 #;(define (add-to-store [sto : Store] [value : Value]) : Location
   (define loc (allocate sto 1))
@@ -123,18 +118,18 @@
 
 (define (make-initial-store [memsize : Natural]) : Store
   ;(define store : Store (make-vector memsize (NullV)))
-  (define store : Store (make-vector memsize 0))
-  ;(vector-set! store 0 1)
-  (populate-store store initial-env)
-  store)
-;-------------
+  (cond
+    [(< memsize 1) (error 'make-initial-store "DRMG: Store length should be minimum 1")]
+    [else 
+     (define store : Store (make-vector memsize 0))
+     ;(vector-set! store 0 1)
+     (populate-store store initial-env)
+     store ]))
+;------------- 
 
-#;(define (populate-store [vec : Vector] [env : Env] [location : Integer]) : Store
-
-  )
 (define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Null
   (cond
-    [(empty? bindings) empty]
+    [(empty? bindings) empty] 
     [else
      (define current (first bindings))
      (define location (allocate sto 1))
@@ -150,7 +145,7 @@
 
 #;(define (find-next-loc [sto : Store] [curLoc : Natural]) : Location
   (if (equal? (vector-ref sto curLoc) (NullV)
-  )))
+  ))) 
 
 
 (define (allocate [sto : Store] [size : Natural]) : Location
@@ -160,21 +155,17 @@
     [(> next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
     [else
      ;i think adding 1 to start should fix cuz i think what you are trying to do is make the 0th value the length
-     (vector-set! sto 0 next) (+ start 1)]))
+     (vector-set! sto 0 next) {+ start  1}]))
  
-;(define my-store (make-initial-store 50))
-;(check-equal? (allocate my-store 4) 1)
-;(check-equal? (allocate my-store 3) 5)
-;(check-equal? (vector-ref my-store 0) 8)
-
+ 
+(define s30 (make-initial-store 30))   ; the 21 primitives use cells 1-21
+(check-equal? (allocate s30 8) 22) 
+(check-equal? (vector-ref s30 0) 30) 
+;(check-exn #rx"DRMG" (lambda () (allocate s30 1)))
+;(check-exn #rx"DRMG" (lambda () (make-initial-store 0)))
 
 ;only for testing
 ;(define initial-store : Store (make-initial-store 100))
-
-;dont think this is needed as top interp will make it for you
-;also this ended up calling populate store twice
-#;(define initial-env : Env
-  (populate-store initial-store top-env))
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -279,7 +270,7 @@
     ; i thinkkk its somewhat like this, i need to fully understand what the instructions are saying
     ; i might be wrong on this so change it however you like,  not fully sure if it needs to be in parser
     
-    [(list 'while guard body) (RocalC (IdC 'while) (parse guard) (parse body))]
+    ;[(list 'while guard body) (RocalC (IdC 'while) (parse guard) (parse body))]
        
     
     [(list fun args ...) (AppC (parse fun) (map parse args))]
@@ -334,6 +325,14 @@
     [(zero? n) '()]
     [else (cons v (repeat-value (- n 1) v))]))
 
+;; fill-with!: stores v in n consecutive cells starting at start
+(define (fill-with! [start : Natural] [n : Natural] [v : Value] [sto : Store]) : Void
+  (cond
+    [(zero? n) (void)]
+    [else
+     (vector-set! sto start v)
+     (fill-with! (+ start 1) (- n 1) v sto)]))
+
 ;; check-index: returns idx as a Natural if 0 <= idx < len, errors otherwise
 (define (check-index [idx : Real] [len : Natural]) : Natural
   (cond
@@ -367,6 +366,7 @@
                   [(BoolV boo) (string-append (serialize (BoolV boo)) (concat-drmg r))]
                   [_ (string-append (serialize f) (concat-drmg r))])]))
 
+
 ;------------------------ Interp for Primitive Values ----------------------------------------
 
 ;takes in a symbol and a list of values and it performs an operation based
@@ -397,7 +397,7 @@
        [(list (NumV a) (NumV b)) (BoolV (<= a b))]
        [_ (error 'interp-prim "DRMG: Expected two numbers")])]
     ['strlen
-     (match args
+     (match args 
        [(list (StrV s)) (NumV (string-length s))]
        [_ (error 'interp-prim "DRMG: strlen expects one string")])]
     ['substring
@@ -421,6 +421,9 @@
            [((NumV a) (NumV b)) (= a b)]
            [((BoolV a) (BoolV b)) (equal? a b)]
            [((StrV a) (StrV b)) (string=? a b)]
+           ; new for drmg6 
+           [((ArrV l1 n1) (ArrV l2 n2)) (and (= l1 l2) (= n1 n2))]
+           [((NullV) (NullV)) #t]
            [(_ _) #f]))]
        [_ (error 'interp-prim "DRMG: equal? expects two arguments")])]
     ['error
@@ -452,13 +455,29 @@
        [_ (error 'interp-prim "random expects one argument")])]
 
     ; Array cases
-    ['make-array
+    #;['make-array
      (match args
        [(list (NumV  (? exact-positive-integer? n)) v)
         (new-array  (repeat-value n v) sto)]
-       [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])] 
+       [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])]
+
+    ['make-array
+     (match args
+       [(list (NumV (? exact-positive-integer? n)) v)
+        (define base (allocate sto n))   ; errors with DRMG before anything is built
+        (fill-with! base n v sto)
+        (ArrV base n)]
+       [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])]
+
+    
     ['array (new-array args sto)]
+    
     ['aref
+     (match args
+       [(list (ArrV base len) (NumV idx))
+        (cast (vector-ref sto (+ base (check-index idx len))) Value)]
+       [_ (error 'interp-prim "DRMG: aref expects an array and an index")])]
+    #;['aref
      (match args
        [(list (ArrV base len) (NumV idx))
 
@@ -488,40 +507,9 @@
 ;takes in an exprC and an environment and it uses the 
 ;environment to interpret the expression into a value
 
-;dead code, already failing software engineering i see...
-#;(define (interp [e : ExprC] [env : Env]) : Value
-  (match e
-    [(IdC s) (lookup s env)]
-    [(NumC n) (NumV n)]
-    [(StrC s) (StrV s)] 
-    [(If condition ifTrue else)
-     (define result (interp condition env))
-     (match result
-       [(BoolV #t) (interp ifTrue env)]
-       [(BoolV #f) (interp else env)]
-       [_ (error 'interp "DRMG: condition is not a boolean value")])]
-    [(LamC args body) (CloV (map IdC-sym args) body env)]
-    [(AppC func args)
-     (define fundef (interp func env))
-             (match fundef
-               ; Interp returns Value so we have to match to see if its specifically CloV
-               [(CloV params body closure-env) 
-                (cond
-                  ;if the lengths of arguements are right we interp the values,
-                  ;making in bindings, and create the new env
-                  [(equal? (length params) (length args))
-                   (define arg-values (interp-args args env))
-                   (define bindings (map Bind params arg-values))
-                   (define new-env (append bindings closure-env))
-                   (interp body new-env)]
-                  [else (error 'interp "DRMG: Number of Arguments are not equal got ~v" args)])]
-               [(PrimV op) (interp-prim op (interp-args args env))]
-               [_ (error 'interp "DRMG: Attempted to call a non-function")])]))
-
 
 ; DRMG 6 version
 (define (interp [e : ExprC] [env : Env] [sto : Store]) : Value
-  (NumV 2)
   (match e
     [(IdC s) (cast (vector-ref sto (lookup s env)) Value)]
     [(NumC n) (NumV n)]
@@ -534,14 +522,24 @@
        [_ (error 'interp "DRMG: condition is not a boolean value")])]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
 
-    ;rocal, man i dont want to do this anymore, can we just be chuds and grind out the fortnite token
+    ;rocal 
     [(RocalC name rhs body)
+     (define loc (allocate sto 1))
+     (vector-set! sto loc (NullV))
+     (define new-env (cons (Bind (IdC-sym name) loc) env))
+     (vector-set! sto loc (interp rhs new-env sto))
+     (interp body new-env sto)]
+
+    
+    #;[(RocalC name rhs body)
      (define location (allocate sto 1))
      (define roc-sym (IdC-sym name))
      
-     (define new-bind (Bind roc-sym location))
+     (define new-bind (Bind roc-sym location)) 
      (define new-env (cons new-bind env))
      (vector-set! sto location (interp rhs new-env sto))
+     
+     
      
 
      ;lowkey dont know if this is what you're supposed to do
@@ -597,11 +595,12 @@
 
 ;suprising works but needs more testing ofc, lowkey double check if im implementing the while function in the right locations (interp, interp-prim, etc)
 ; also found out that x = x + 1 does work as expected if we are supposed to do that
-(define while-thing (parse '{local [x = 0] in {begin {while {<= x 4} {begin {println {++ "" x}} {x := {+ x 1}}}} {println "done"}}}))
+#;(define while-thing (parse '{local [x = 0] in {begin {while {<= x 4} {begin {println {++ "" x}} {x := {+ x 1}}}} {println "done"}}}))
+
 
 (define func (parse '{{% a b -> {+ a b}} 4 5}))
 
-(interp while-thing top-env (make-initial-store 80))
+#;(interp while-thing top-env (make-initial-store 80))
 
 ;test cases, grrr
 (check-equal? (parse '{x := 4}) (MutC (IdC 'x) (NumC 4)))
@@ -619,4 +618,26 @@
 ; DRMG 6 version of top interp
 (define (top-interp [s : Sexp] [memsize : Natural]) : String
   (serialize (interp (parse s) top-env (make-initial-store memsize))))
+ 
+ 
+(define while
+  '{rocal [loop = {% guard body ->
+                     {if {guard}
+                         {begin {body} {loop guard body}}
+                        false}}]
+    in loop}) 
+  
+(check-equal?
+  (top-interp `{local [while = ,while] [x = 0]
+               in {begin {while {% -> {<= x 4}} {% -> {x := {+ x 1}}}}
+                         x}}
+             100)
+ "5")
 
+
+(check-equal? (top-interp '{aref {array 5 6 7} 1} 100) "6")
+(check-exn #rx"DRMG" (lambda () (top-interp '{aref {array 1 2} 2} 100)))
+(check-equal? (top-interp '{local [a = {array 1 2}] in {equal? a a}} 100) "true")
+(check-equal? (top-interp '{equal? {array 1} {array 1}} 100) "false")
+(check-equal? (top-interp '{rocal [f = {% n -> {if {<= n 0} 0 {+ n {f {- n 1}}}}}] in {f 3}} 200) "6")
+(check-exn #rx"DRMG" (lambda () (top-interp '{make-array 1000000000 0} 100)))

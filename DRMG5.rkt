@@ -64,10 +64,9 @@
 
 ;; has-duplicates? checks whether a list contains repeated symbols.
 (define (has-duplicates? [symbols : (Listof Symbol)]) : Boolean
-  (if (empty? symbols)
-      #f
+  (if (empty? symbols) #f
       (if (member (first symbols) (rest symbols))
-          #t
+#t
           (has-duplicates? (rest symbols)))))
 
 (check-equal? (has-duplicates? '(x y z)) #f)
