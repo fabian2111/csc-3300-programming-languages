@@ -108,13 +108,7 @@
 ;reserved keywords
 (define reserved '(if = local % -> in := rocal))
 
-;-----------------  store functions ------------aaert
-
-#;(define (add-to-store [sto : Store] [value : Value]) : Location
-  (define loc (allocate sto 1))
-  (vector-set! sto loc value)
-  loc)
-  
+;-----------------  store functions ------------
 
 (define (make-initial-store [memsize : Natural]) : Store
   ;(define store : Store (make-vector memsize (NullV)))
@@ -135,19 +129,8 @@
      (define location (allocate sto 1))
      (vector-set! sto location (InitialBinding-val current))
      (populate-store sto (rest bindings))]))
-     ;(cons
-      ;(Bind (InitialBinding-name current) location)
-      ;(populate-store sto (rest bindings)))]))
-
- 
+    
 ; probably for making arrays
-;(define (allocate [sto : Store] [locations : Integer]) : Location
-
-#;(define (find-next-loc [sto : Store] [curLoc : Natural]) : Location
-  (if (equal? (vector-ref sto curLoc) (NullV)
-  ))) 
-
-
 (define (allocate [sto : Store] [size : Natural]) : Location
   (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
   (define next (+ start size))
