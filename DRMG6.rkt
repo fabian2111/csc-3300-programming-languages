@@ -121,7 +121,7 @@
 (define (allocate [sto : Store] [size : Natural]) : Location
   (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
   (define next (+ start size))
-  (cond
+  (cond 
     [(>= next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
     [else (vector-set! sto 0 next) {+ start 1}]))
 
@@ -223,9 +223,9 @@
        [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
        [else (error 'parse "DRMG: reserved word used as rocal variable ")])]
     [(list fun args ...) (AppC (parse fun) (map parse args))]
-    [_ (error 'parse "DRMG: Invalid syntax")]))
+    [_ (error 'parse "DRMG: Invalid syntax")])) 
 
-
+  
 ;------- interp helper for multiple arguements ---------
 
 ;Takes in a list of args and the environment and it evaluates the args
