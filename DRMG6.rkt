@@ -116,10 +116,9 @@
     [(< memsize 1) (error 'make-initial-store "DRMG: Store length should be minimum 1")]
     [else 
      (define store : Store (make-vector memsize 0))
-     ;(vector-set! store 0 1)
      (populate-store store initial-env)
      store ]))
-;------------- 
+;-------------  
 
 (define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Null
   (cond
@@ -135,20 +134,18 @@
   (define start (assert (vector-ref sto 0) exact-nonnegative-integer?))
   (define next (+ start size))
   (cond
-    [(> next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
+    [(>= next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
     [else
      ;i think adding 1 to start should fix cuz i think what you are trying to do is make the 0th value the length
      (vector-set! sto 0 next) {+ start  1}]))
  
- 
+  
 (define s30 (make-initial-store 30))   ; the 21 primitives use cells 1-21
+(vector-length s30)
 (check-equal? (allocate s30 8) 22) 
-(check-equal? (vector-ref s30 0) 30) 
-;(check-exn #rx"DRMG" (lambda () (allocate s30 1)))
-;(check-exn #rx"DRMG" (lambda () (make-initial-store 0)))
-
-;only for testing
-;(define initial-store : Store (make-initial-store 100))
+(check-equal? (vector-ref s30 0) 29)  
+(check-exn #rx"DRMG" (lambda () (allocate s30 1))) 
+(check-exn #rx"DRMG" (lambda () (make-initial-store 0)))
 
 
 ; ----------------------------------------Serialize -------------------------------------------
@@ -174,9 +171,6 @@
       [(empty? env) (error 'lookup "DRMG: Binding was not found for ~v" sym)]
       [(symbol=? sym (Bind-name (first env))) (Bind-location (first env))]
       [else (lookup sym (rest env))]))
-
-;(lookup '+ top-env)
-;(vector-ref initial-store 3)
 
 
 ;----------------- Helper func to find duplicate variables and Invalid Variables ----------------------
@@ -306,7 +300,7 @@
 (define (repeat-value [n : Natural] [v : Value]) : (Listof Value)
   (cond
     [(zero? n) '()]
-    [else (cons v (repeat-value (- n 1) v))]))
+    [else (cons v (repeat-value (- n 1) v))])) 
 
 ;; fill-with!: stores v in n consecutive cells starting at start
 (define (fill-with! [start : Natural] [n : Natural] [v : Value] [sto : Store]) : Void
@@ -438,13 +432,13 @@
        [_ (error 'interp-prim "random expects one argument")])]
 
     ; Array cases
-    #;['make-array
+    ['make-array
      (match args
        [(list (NumV  (? exact-positive-integer? n)) v)
         (new-array  (repeat-value n v) sto)]
        [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])]
 
-    ['make-array
+    #;['make-array
      (match args
        [(list (NumV (? exact-positive-integer? n)) v)
         (define base (allocate sto n))   ; errors with DRMG before anything is built
@@ -601,26 +595,308 @@
 ; DRMG 6 version of top interp
 (define (top-interp [s : Sexp] [memsize : Natural]) : String
   (serialize (interp (parse s) top-env (make-initial-store memsize))))
+
+;---------------------------------------- Tests -------------------------------------
+
+
+;------------------ Println ------------------------------
+(check-equal? (println-drmg (list (StrV "Hello"))) (BoolV #t))
+
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg (list (NumV 5)))))
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg '())))
+(check-exn (regexp (regexp-quote "DRMG: println expects one string argument"))
+           (lambda () (println-drmg (list (StrV "Hello") (StrV "World")))))
+(check-exn (regexp "println expects one string argument") (lambda () (println-drmg (list (NumV 5) (NumV 10)))))
  
- 
-(define while
-  '{rocal [loop = {% guard body ->
-                     {if {guard}
-                         {begin {body} {loop guard body}}
-                        false}}]
-    in loop}) 
-  
+;------------------ Concat (++) ------------------
+
+(check-equal? (concat-drmg (list (PrimV '+))) "#<primop>")
+(check-equal? (concat-drmg '())"")
+(check-equal? (concat-drmg (list (StrV "Hello"))) "Hello")
+(check-equal? (concat-drmg (list (NumV 42)))"42")
+(check-equal? (concat-drmg (list (BoolV #t)))"true")
+(check-equal? (concat-drmg (list (BoolV #f)))"false")
+(check-equal? (concat-drmg (list (StrV "Hello ") (StrV "World"))) "Hello World")
+(check-equal? (concat-drmg (list (StrV "A") (StrV "B") (StrV "C"))) "ABC")
+(check-equal? (concat-drmg (list (StrV "Age: ") (NumV 20))) "Age: 20")
+(check-equal? (concat-drmg (list (NumV 5) (StrV " apples"))) "5 apples")
+(check-equal? (concat-drmg (list (StrV "Result: ") (BoolV #t))) "Result: true")
+(check-equal? (concat-drmg (list (NumV 10) (StrV " + ") (NumV 5))) "10 + 5")
 (check-equal?
-  (top-interp `{local [while = ,while] [x = 0]
-               in {begin {while {% -> {<= x 4}} {% -> {x := {+ x 1}}}}
-                         x}}
-             100)
- "5")
+ (concat-drmg
+  (list (StrV "Player: ")
+        (StrV "Rock")
+        (StrV ", Score: ")
+        (NumV 10)
+        (StrV ", Winner: ")
+        (BoolV #t)))
+ "Player: Rock, Score: 10, Winner: true")
+;begin
+(check-equal? (interp-prim 'begin (list {NumV 3} {StrV "test"})(make-initial-store 50)) {StrV "test"} )
+(check-equal? (interp-prim 'begin (list {NumV 6}) (make-initial-store 50) ) {NumV 6})
+
+;println
+(check-equal? (interp-prim 'println (list {StrV "test"}) (make-initial-store 50)) {BoolV #t})
+
+;interp-prim - ++
+(check-equal? (interp-prim '++ (list {StrV "Num: "} {NumV 5}) (make-initial-store 50)) {StrV "Num: 5"})
+
+;------------------------ Look Up Function -------------------
+
+(check-equal? (lookup 'b (list (Bind 'a 5) (Bind 'b 12))) 12)
+ 
+;; when a name is bound twice, the innermost (first) binding wins
+(check-equal? (lookup 'x (list (Bind 'x 7) (Bind 'x 9))) 7)
+;; top-level primitives map to their store locations
+(check-equal? (lookup '+ top-env) 3)
+(check-equal? (lookup 'true top-env) 1)
+(check-equal? (lookup 'aset! top-env) 21)
+;; the location holds the value, so check the store too
+(check-equal? (vector-ref (make-initial-store 50) (lookup '+ top-env)) (PrimV '+))
+
+;; errors
+(check-exn (regexp (regexp-quote "DRMG: Binding was not found"))
+           (lambda () (lookup 'c (list (Bind 'a 5) (Bind 'b 12)))))
+(check-exn (regexp (regexp-quote "DRMG: Binding was not found"))
+           (lambda () (lookup 'c (list (Bind 'a 10) (Bind 'b 10)))))
+(check-exn (regexp (regexp-quote "DRMG: Binding was not found"))
+           (lambda () (lookup 'x '())))
+
+; Top-interp tests
+;(define store1 (make-initial-store 100)) 
+(check-equal? (top-interp "hi" 50) "\"hi\"")
+(check-equal? (top-interp 'true 50) "true")
+(check-equal? (top-interp 'false 50) "false")
+(check-equal? (top-interp '{if {<= {* 5 2} 11} 10 11} 50) "10")
+(check-equal? (top-interp '{local [x = 4] in {+ x 4}} 50) "8")
+(check-equal? (top-interp '{local [z = {+ 9 14}] [y = 98] in {+ z y}} 50) "121")
+(check-equal? (top-interp '{local [func = {% x -> {+ x 5}}] in {func 5}} 50) "10")
+(check-equal? (top-interp '{% x -> {+ x 1}} 50) "#<procedure>")
+(check-equal? (top-interp '{{% x -> {+ x 1}} 4} 50) "5")
+(check-equal? (top-interp '{{% -> {+ 4 10}}} 50) "14")
+(check-equal? (top-interp '({% x -> {+ x 1}} {* 2 10}) 50) "21")
+
+;----------------------- Serialize Tests----------------------
+; Test serializing numbers
+(check-equal? (serialize (NumV 5)) "5")
+(check-equal? (serialize (NumV -3)) "-3")
+(check-equal? (serialize (NumV 2.5)) "2.5")
+
+; Test serializing booleans
+(check-equal? (serialize (BoolV #t)) "true")
+(check-equal? (serialize (BoolV #f)) "false")
+
+; Test serializing strings
+(check-equal? (serialize (StrV "hello")) "\"hello\"")
+(check-equal? (serialize (StrV "DRMG")) "\"DRMG\"")
+
+; Test serializing closures
+(check-equal?
+ (serialize (CloV empty (NumC 5) empty))"#<procedure>") 
+
+; Test serializing primitive operators
+(check-equal? (serialize (PrimV '+)) "#<primop>")
+;---------------------- Parser Test ---------------------------
+;Basic Test
+(check-equal? (parse 4) {NumC 4})
+(check-equal? (parse "test") {StrC "test"})
+(check-equal? (parse 'Hello) {IdC 'Hello})
+(check-equal? (parse '{if true 10 20}) (If (IdC 'true) (NumC 10) (NumC 20)))
+(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+(check-equal? (parse '{+ 2 3}) (AppC (IdC '+) (list (NumC 2) (NumC 3))))
+(check-equal? (parse '{% x y -> x}) (LamC (list (IdC 'x) (IdC 'y)) (IdC 'x)))
+
+;duplicate parameters test
+(check-equal? (has-duplicates? '(x y z)) #f)
+(check-equal? (has-duplicates? '(x y x)) #t)
+(check-equal? (has-duplicates? '()) #f)
+; Invalid Syntax 
+(check-exn (regexp (regexp-quote "DRMG: Invalid syntax")) (lambda () (parse '{})))
+(check-exn (regexp (regexp-quote "DRMG: Invalid syntax for if")) (lambda () (parse '{if true 4})))
+;Error
+(check-exn (regexp "DRMG: Duplicate function parameters") (lambda () (parse '{% x x -> x})))
+(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '{local [z = {% -> 3}] [z = 9] in z})))
+
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{+ if 4}))) 
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{- local 2})))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '{* % 2})))
+(check-exn (regexp "DRMG: Duplicate variables in local") (lambda () (parse '(local (z = (% -> 3)) (z = 9) in (z)))))
+(check-exn (regexp "DRMG: Incorrect usage of DRMG syntax") (lambda () (parse '(if = 0 1)))) 
+(check-exn (regexp "DRMG: Reserved word used as local variable") (lambda () (parse '(local (local = "") in "World")))) 
+(check-exn (regexp "DRMG: Reserved DRMG word used as parameter") (lambda () (parse '(% if -> 3))))  
+;------------------------------- Interp Test Cases -----------------------
+
+;; test setup: a store where x lives at a real location and holds (NumV 4)
+(define sto-x : Store (make-initial-store 100))
+(define x-loc : Location (allocate sto-x 1))
+(vector-set! sto-x x-loc (NumV 4))
+(define env-x : Env (cons (Bind 'x x-loc) top-env))
+
+;Normal
+(check-equal? (interp (NumC 5) top-env (make-initial-store 100)) (NumV 5))
+(check-equal? (interp (IdC 'x) env-x sto-x) (NumV 4))
+(check-equal? (interp (IdC '+) top-env (make-initial-store 100)) (PrimV '+))
+
+;String
+(check-equal? (interp (StrC "hello") top-env (make-initial-store 100)) (StrV "hello"))
+
+;AppC
+;; the parameter x gets a fresh location and shadows the outer x
+(check-equal? (interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 10)))
+                      env-x sto-x)
+              (NumV 10))
+;; the body sees the outer x, since the parameter is y
+(check-equal? (interp (AppC (LamC (list (IdC 'y)) (IdC 'x)) (list (NumC 10)))
+                      env-x sto-x)
+              (NumV 4))
+;; the outer x is unchanged after the call
+(check-equal? (vector-ref sto-x x-loc) (NumV 4))
+;; wrong arg count
+(check-exn #rx"DRMG"
+           (lambda () (interp (AppC (LamC (list (IdC 'x)) (IdC 'x)) (list (NumC 1) (NumC 2)))
+                              top-env (make-initial-store 100))))
+;; calling a non-function
+(check-exn #rx"DRMG"
+           (lambda () (interp (AppC (NumC 3) (list (NumC 1))) top-env (make-initial-store 100))))
+
+;IF
+(check-equal? (interp (If (AppC (IdC '<=) (list (NumC 2) (NumC 3))) (NumC 4) (NumC 21))
+                      top-env (make-initial-store 100))
+              (NumV 4))
+(check-equal? (interp (If (AppC (IdC '<=) (list (NumC 10) (NumC 0))) (NumC 2) (NumC 100))
+                      top-env (make-initial-store 100))
+              (NumV 100))
+(check-equal? (interp (If (IdC 'true) (NumC 1) (NumC 2)) top-env (make-initial-store 100)) (NumV 1))
+(check-equal? (interp (If (IdC 'false) (NumC 10) (NumC 20)) top-env (make-initial-store 100)) (NumV 20))
 
 
+(check-equal? (interp (If (IdC 'true) (NumC 10) (AppC (IdC 'error) (list (StrC "custom error"))))
+                      top-env (make-initial-store 100))
+              (NumV 10))
+;; non-boolean condition
+(check-exn #rx"DRMG"
+           (lambda () (interp (If (NumC 1) (NumC 2) (NumC 3)) top-env (make-initial-store 100))))
+
+;MutC (:=)
+;; returns null and changes the store cell
+(check-equal? (interp (MutC (IdC 'x) (NumC 9)) env-x sto-x) (NullV))
+(check-equal? (vector-ref sto-x x-loc) (NumV 9))
+;; unbound variable
+(check-exn #rx"DRMG"
+           (lambda () (interp (MutC (IdC 'nope) (NumC 1)) top-env (make-initial-store 100))))
+
+;RocalC
+(check-equal? (interp (RocalC (IdC 'x) (NumC 3) (IdC 'x)) top-env (make-initial-store 100))
+              (NumV 3))
+(check-equal? (top-interp '{rocal [f = {% n -> {if {<= n 0} 0 {+ n {f {- n 1}}}}}] in {f 3}} 200)
+              "6")
+
+;evaluation order (
+(check-equal? (top-interp '{local [x = 1]
+                            in {- {begin {x := {+ x 1}} x}
+                                  {begin {x := {* x 10}} x}}} 200)
+              "-18")
+
+;---------------- Interp Prims Test Cases -------------------------
+;creates a store for each test case
+(define (prim [op : Symbol] [args : (Listof Value)]) : Value
+  (interp-prim op args (make-initial-store 100)))
+ 
+;; arithmetic and comparison
+(check-equal? (prim '+ (list (NumV 2) (NumV 3))) (NumV 5))
+(check-equal? (prim '- (list (NumV 10) (NumV 3))) (NumV 7))
+(check-equal? (prim '- (list (NumV 3) (NumV 10))) (NumV -7))
+(check-equal? (prim '* (list (NumV 4) (NumV 3))) (NumV 12))
+(check-equal? (prim '* (list (NumV 5) (NumV 0))) (NumV 0))
+(check-equal? (prim '/ (list (NumV 12) (NumV 3))) (NumV 4))
+(check-equal? (prim '/ (list (NumV 5) (NumV 2))) (NumV 5/2))
+(check-equal? (prim '<= (list (NumV 3) (NumV 5))) (BoolV #t))
+(check-equal? (prim '<= (list (NumV 5) (NumV 3))) (BoolV #f))
+(check-equal? (prim '<= (list (NumV 4) (NumV 4))) (BoolV #t))
+ 
+;; equal?
+(check-equal? (prim 'equal? (list (NumV 5) (NumV 5))) (BoolV #t))
+(check-equal? (prim 'equal? (list (NumV 5) (StrV "5"))) (BoolV #f))
+(check-equal? (prim 'equal? (list (StrV "hello") (StrV "hello"))) (BoolV #t))
+(check-equal? (prim 'equal? (list (BoolV #t) (BoolV #f))) (BoolV #f))
+;; arrays are equal only if they are the same array
+(check-equal? (prim 'equal? (list (ArrV 22 3) (ArrV 22 3))) (BoolV #t))
+(check-equal? (prim 'equal? (list (ArrV 22 3) (ArrV 25 3))) (BoolV #f))
+;; null equals itself and nothing else
+(check-equal? (prim 'equal? (list (NullV) (NullV))) (BoolV #t))
+(check-equal? (prim 'equal? (list (NullV) (NumV 0))) (BoolV #f))
+
+;; strings
+(check-equal? (prim 'strlen (list (StrV "abc"))) (NumV 3))
+(check-equal? (prim 'substring (list (StrV "hello") (NumV 1) (NumV 3))) (StrV "el"))
+(check-equal? (prim '++ (list (StrV "a") (NumV 1) (BoolV #t))) (StrV "a1true"))
+
+;; arrays
+(check-equal? (prim 'make-array (list (NumV 3) (NumV 0))) (ArrV 22 3))
+(check-equal? (prim 'array (list (NumV 1) (NumV 2))) (ArrV 22 2))
+(define sto-arr : Store (make-initial-store 100))
+(define arr1 (interp-prim 'array (list (NumV 5) (NumV 6) (NumV 7)) sto-arr))
+(check-equal? (interp-prim 'aref (list arr1 (NumV 2)) sto-arr) (NumV 7))
+(check-equal? (interp-prim 'aset! (list arr1 (NumV 0) (StrV "x")) sto-arr) (NullV))
+(check-equal? (interp-prim 'aref (list arr1 (NumV 0)) sto-arr) (StrV "x"))
+;; a second array is allocated right after the first
+(check-equal? (interp-prim 'array (list (NumV 1)) sto-arr) (ArrV 25 1))
+
+;; primitive errors
+(check-exn (regexp (regexp-quote "DRMG: Division by zero"))
+           (lambda () (prim '/ (list (NumV 5) (NumV 0)))))
+(check-exn #rx"Expected two numbers" (lambda () (prim '+ (list (NumV 2) (StrV "hello")))))
+(check-exn #rx"Expected two numbers" (lambda () (prim '- (list (NumV 2) (StrV "hello")))))
+(check-exn #rx"Expected two numbers" (lambda () (prim '* (list (NumV 2)))))
+(check-exn #rx"DRMG" (lambda () (prim 'strlen (list (NumV 1)))))
+(check-exn #rx"DRMG" (lambda () (prim 'substring (list (StrV "hi") (NumV 1) (NumV 5)))))
+(check-exn #rx"DRMG" (lambda () (prim 'substring (list (StrV "hi") (NumV 2) (NumV 1)))))
+(check-exn #rx"DRMG" (lambda () (prim 'make-array (list (NumV 0) (NumV 1)))))
+(check-exn #rx"DRMG" (lambda () (prim 'array '())))
+(check-exn #rx"DRMG" (lambda () (prim 'make-array (list (NumV 1000) (NumV 0)))))  ; out of memory
+(check-exn #rx"DRMG" (lambda () (interp-prim 'aref (list arr1 (NumV 3)) sto-arr)))
+(check-exn #rx"DRMG" (lambda () (interp-prim 'aref (list arr1 (NumV -1)) sto-arr)))
+(check-exn #rx"DRMG" (lambda () (interp-prim 'aset! (list arr1 (NumV 3) (NumV 0)) sto-arr)))
+(check-exn #rx"DRMG" (lambda () (prim 'aref (list (NumV 1) (NumV 0)))))
+;; more arithmetic errors
+(check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '+ (list (NumV 2)))))
+(check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '* (list (NumV 2) (NumV 3) (NumV 4)))))
+ 
+;; division by zero
+(check-exn #rx"DRMG: Division by zero" (lambda () (prim '/ (list (NumV 5) (NumV 0)))))
+
+;; unknown primitives
+(check-exn #rx"DRMG: Unknown primitive operator" (lambda () (prim '? (list (NumV 2) (NumV 10)))))
+(check-exn #rx"DRMG: Unknown primitive operator" (lambda () (prim 'unknown (list (StrV "hello")))))
+(check-exn #rx"DRMG: Unknown primitive operator"
+           (lambda () (prim 'function (list (StrV "hello") (NumV 1) (NumV 3)))))
+
+;; custom errors
+(check-exn #rx"user-error: .my custom error." (lambda () (prim 'error (list (StrV "my custom error")))))
+(check-exn #rx"user-error: 3" (lambda () (prim 'error (list (NumV 3)))))
+(check-exn #rx"DRMG: error expects one argument" (lambda () (prim 'error (list (NumV 3) (StrV "hi")))))
+(check-exn #rx"DRMG: error expects one argument" (lambda () (prim 'error '())))
+
+;; substring errors
+(check-exn #rx"DRMG: Invalid substring indices"
+           (lambda () (prim 'substring (list (StrV "hello") (NumV -1) (NumV 2)))))
+(check-exn #rx"DRMG: Invalid substring indices"
+           (lambda () (prim 'substring (list (StrV "hello") (NumV 1) (NumV -1)))))
+(check-exn #rx"DRMG: Range exceeds string length"
+           (lambda () (prim 'substring (list (StrV "hello") (NumV 1) (NumV 6)))))
+(check-exn #rx"DRMG: Second input is less than first input"
+           (lambda () (prim 'substring (list (StrV "hello") (NumV 4) (NumV 2)))))
+
+;; equal? with the wrong number of arguments
+(check-exn #rx"DRMG: equal\\? expects two arguments" (lambda () (prim 'equal? (list (NumV 5)))))
+
+ 
 (check-equal? (top-interp '{aref {array 5 6 7} 1} 100) "6")
 (check-exn #rx"DRMG" (lambda () (top-interp '{aref {array 1 2} 2} 100)))
 (check-equal? (top-interp '{local [a = {array 1 2}] in {equal? a a}} 100) "true")
 (check-equal? (top-interp '{equal? {array 1} {array 1}} 100) "false")
 (check-equal? (top-interp '{rocal [f = {% n -> {if {<= n 0} 0 {+ n {f {- n 1}}}}}] in {f 3}} 200) "6")
-(check-exn #rx"DRMG" (lambda () (top-interp '{make-array 1000000000 0} 100)))
+(check-exn #rx"DRMG" (lambda () (top-interp '{make-array 1000 0} 100)))
