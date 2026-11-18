@@ -24,7 +24,6 @@
 (struct ArrC ([values : (Listof ExprC)]) #:transparent)
 (struct ArrV ([loc : Location] [len : Natural]) #:transparent)
 (struct NullV () #:transparent)
-;mutc (mutation) i think its like this
 (struct MutC ([var : IdC] [val : ExprC]) #:transparent)
 (struct RocalC ([name : IdC] [rhs : ExprC] [body : ExprC]) #:transparent)
 
@@ -44,7 +43,7 @@
 (struct Bind ([name : Symbol] [location : Location]) #:transparent)
 
 
-
+;the s-expression for the while function
 (define while
   '{rocal [loop = {% guard body ->
                      {if {guard}
@@ -52,6 +51,7 @@
                         false}}]
     in loop})
 
+;the s-expression for the while functino
 (define in-order
   '{% arr arrlen ->
       {local [curLoc = 0] [res = false] in
@@ -63,12 +63,6 @@
                                   {curLoc := {+ curLoc 1}}}}}}
           res}}})
 
-;{<= {aref arr curLoc} {aref arr {+ curLoc 1}}}
-
-
-;i think you will need both this and initial env, since you already know the location values initially.
-;doing this helped the issues that i was having
-;then again, im not too sure so feel free to change
 (define top-env
   (list
    (Bind 'true 1) (Bind 'false 2)
@@ -81,9 +75,7 @@
    (Bind 'begin 15) (Bind '++ 16)
    (Bind 'random 17) (Bind 'make-array 18)
    (Bind 'array 19) (Bind 'aref 20)
-   (Bind 'aset! 21) (Bind 'arr-len 22)
-
-   ))
+   (Bind 'aset! 21) (Bind 'arr-len 22)))
 
 (define initial-env
   (list
@@ -97,9 +89,7 @@
     (InitialBinding 'begin (PrimV 'begin)) (InitialBinding '++ (PrimV '++))
     (InitialBinding 'random (PrimV 'random)) (InitialBinding 'make-array (PrimV 'make-array))
     (InitialBinding 'array (PrimV 'array)) (InitialBinding 'aref (PrimV 'aref))
-    (InitialBinding 'aset! (PrimV 'aset!)) (InitialBinding 'arr-len (PrimV 'arr-len))
-
-    ))
+    (InitialBinding 'aset! (PrimV 'aset!)) (InitialBinding 'arr-len (PrimV 'arr-len))))
 
 
 ;reserved keywords
@@ -132,20 +122,10 @@
   (define next (+ start size))
   (cond
     [(>= next (vector-length sto)) (error 'allocate "DRMG: Out of Memory when trying to allocate")]
-    [else
-     ;i think adding 1 to start should fix cuz i think what you are trying to do is make the 0th value the length
-     (vector-set! sto 0 next) {+ start 1}]))
-
-
-;(define s30 (make-initial-store 40))   ; the 21 primitives use cells 1-21
-;(check-equal? (allocate s30 8) 22)
-;(check-equal? (vector-ref s30 0) 30)
-;(check-exn #rx"DRMG" (lambda () (allocate s30 1)))
-;(check-exn #rx"DRMG" (lambda () (make-initial-store 0)))
+    [else (vector-set! sto 0 next) {+ start 1}]))
 
 ;only for testing
 (define initial-store : Store (make-initial-store 100))
-
 
 ; ----------------------------------------Serialize -------------------------------------------
 
@@ -222,7 +202,6 @@
        [(has-duplicates? ps)
         (error 'parse "DRMG: Duplicate function parameters")]
        [else (LamC (map IdC ps) (parse body))])]
-
     [(list 'local (list (? symbol? vars) '= expr) ... 'in expr2)
      (define vs (cast vars (Listof Symbol)))
      (cond
@@ -236,18 +215,10 @@
      (if (not valid)
          (error 'parse "DRMG: Reserved word used as variable")
          (MutC (IdC var) (parse val)))]
-
     [(list 'rocal (list (? symbol? name) '= expr) 'in body)
      (cond
        [(valid-id? name) (RocalC (IdC name) (parse expr) (parse body))]
        [else (error 'parse "DRMG: reserved word used as rocal variable ")])]
-
-    ; i thinkkk its somewhat like this, i need to fully understand what the instructions are saying
-    ; i might be wrong on this so change it however you like,  not fully sure if it needs to be in parser
-
-    ;[(list 'while guard body) (RocalC (IdC 'while) (parse guard) (parse body))]
-
-
     [(list fun args ...) (AppC (parse fun) (map parse args))]
     [_ (error 'parse "DRMG: Invalid syntax")]))
 
@@ -394,7 +365,6 @@
            [((NumV a) (NumV b)) (= a b)]
            [((BoolV a) (BoolV b)) (equal? a b)]
            [((StrV a) (StrV b)) (string=? a b)]
-           ; new for drmg6
            [((ArrV l1 n1) (ArrV l2 n2)) (and (= l1 l2) (= n1 n2))]
            [((NullV) (NullV)) #t]
            [(_ _) #f]))]
@@ -426,31 +396,17 @@
             (NumV (random (cast n Integer)))
             (error 'interp-prim "random expects a positive integer"))]
        [_ (error 'interp-prim "random expects one argument")])]
-
-    ; Array cases
     ['make-array
      (match args
        [(list (NumV (? exact-positive-integer? n)) v)
         (new-array (repeat-value n v) sto)]
        [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])]
-
-    #;['make-array
-     (match args
-       [(list (NumV (? exact-positive-integer? n)) v)
-        (define base (allocate sto n))   ; errors with DRMG before anything is built
-        (fill-with! base n v sto)
-        (ArrV base n)]
-       [_ (error 'interp-prim "DRMG: make-array expects a positive integer size and a value")])]
-
-
     ['array (new-array args sto)]
-
     ['aref
      (match args
        [(list (ArrV base len) (NumV idx))
         (cast (vector-ref sto (+ base (check-index idx len))) Value)]
        [_ (error 'interp-prim "DRMG: aref expects an array and an index")])]
-
     ['aset!
      (match args
        [(list (ArrV base len) (NumV idx) v)
@@ -464,14 +420,10 @@
 
     [_ (error 'interp-prim "DRMG: Unknown primitive operator")]))
 
-
 ; ------------------------------- Interp ------------------------------------------------
 
 ;takes in an exprC and an environment and it uses the
 ;environment to interpret the expression into a value
-
-
-; DRMG 6 version
 (define (interp [e : ExprC] [env : Env] [sto : Store]) : Value
   (match e
     [(IdC s) (cast (vector-ref sto (lookup s env)) Value)]
@@ -484,74 +436,29 @@
        [(BoolV #f) (interp else env sto)]
        [_ (error 'interp "DRMG: condition is not a boolean value")])]
     [(LamC args body) (CloV (map IdC-sym args) body env)]
-
-    ;rocal
     [(RocalC name rhs body)
      (define loc (allocate sto 1))
      (vector-set! sto loc (NullV))
      (define new-env (cons (Bind (IdC-sym name) loc) env))
      (vector-set! sto loc (interp rhs new-env sto))
      (interp body new-env sto)]
-
-
-    ;mutations, i want to finally let my inner chud take control so that i can play hollow knight, and silksong (hollow knight pt 2) and gta 6 all day
-    ;and pirate token, pirate token
     [(MutC var val)
      (define location (lookup (IdC-sym var) env))
      (vector-set! sto location (interp val env sto))
      (NullV)]
-
-
-
-    ;; copied and pasted changed a couple things (ts is not correct feel free to change), nah do it again
     [(AppC func args)
      (define fundef (interp func env sto))
      (define arg-vals (interp-args args env sto))
              (match fundef
-               ; Interp returns Value so we have to match to see if its specifically CloV
                [(CloV params body closure-env)
                 (cond
                   ;if the lengths of arguements are right we interp the values,
                   ;making in bindings, and create the new env
                   [(equal? (length params) (length args))
-                   ;(define arg-values (interp-args args env sto))
-                   ;(define bindings (map Bind params arg-values))
-                   ;(define new-env (append bindings closure-env))
                    (interp body (extend-env params arg-vals closure-env sto) sto)]
-                   ;(interp body new-env)]
                   [else (error 'interp "DRMG: Number of Arguments are not equal got ~v" args)])]
-              ; [(PrimV op) (interp-prim op (interp-args args env))]
                [(PrimV op) (interp-prim op arg-vals sto)]
-               [_ (error 'interp "DRMG: Attempted to call a non-function")])]
-    ))
-
-
-;(define rocal (parse '{rocal [fact = {% n -> {if (<= n 0) 1 {* n {fact {- n 1}}}}}] in {fact 4}}))
-
-;(parse '{rocal [x = 3] in x})
-;(define test (parse '{+ 1 2}))
-
-;ts works!!!, maybe... gotta test more
-(define val (parse '{local [x = 4] in {begin {println {++ "" x}} {x := "1738"} {println x}}}))
-
-;should error when interping
-(define cant-mutate (parse '{x := 4}))
-
-;suprising works but needs more testing ofc, lowkey double check if im implementing the while function in the right locations (interp, interp-prim, etc)
-; also found out that x = x + 1 does work as expected if we are supposed to do that
-#;(define while-thing (parse '{local [x = 0] in {begin {while {<= x 4} {begin {println {++ "" x}} {x := {+ x 1}}}} {println "done"}}}))
-
-
-(define func (parse '{{% a b -> {+ a b}} 4 5}))
-
-#;(interp while-thing top-env (make-initial-store 80))
-
-;test cases, grrr
-(check-equal? (parse '{x := 4}) (MutC (IdC 'x) (NumC 4)))
-(check-equal? (parse '{x := "y"}) (MutC (IdC 'x) (StrC "y")))
-
-;(check-equal? (interp (MutC (IdC 'x) (NumC 3)) top-env (make-initial-store 30))
-
+               [_ (error 'interp "DRMG: Attempted to call a non-function")])]))
 
 ;----------------------------- top interp -------------------------------
 
@@ -560,32 +467,10 @@
   (serialize (interp (parse s) top-env (make-initial-store memsize))))
 
 
-(interp (parse '{local [x = 0] in
-                  {begin
 
-                    {while {% -> {<= x 5}}
-                                {% -> {begin {println {++ "" x}}
-                                       {x := {+ x 1}}}}}
-
-
-                         {println "done"}}}) top-env initial-store)
-
-
-#;(interp (parse '{local [arr = {array 1 2 3}] in
-                  {begin {println {++ "" {arr-len arr}}} {in-order arr {arr-len arr}}}
-                  }) top-env initial-store)
-
-(top-interp '{in-order {array 1 2 3} 3} 100)
-
-
-
-
-(check-equal?
-  (top-interp `{local [x = 0]
+(check-equal? (top-interp `{local [x = 0]
                in {begin {while {% -> {<= x 4}} {% -> {x := {+ x 1}}}}
-                         x}}
-             100)
- "5")
+                         x}} 100) "5")
 
 
 
@@ -787,6 +672,9 @@
 (check-equal? (top-interp '{rocal [f = {% n -> {if {<= n 0} 0 {+ n {f {- n 1}}}}}] in {f 3}} 200)
               "6")
 
+(check-equal? (parse '{x := 4}) (MutC (IdC 'x) (NumC 4)))
+(check-equal? (parse '{x := "y"}) (MutC (IdC 'x) (StrC "y")))
+
 ;evaluation order (
 (check-equal? (top-interp '{local [x = 1]
                             in {- {begin {x := {+ x 1}} x}
@@ -828,16 +716,16 @@
 (check-equal? (prim '++ (list (StrV "a") (NumV 1) (BoolV #t))) (StrV "a1true"))
 
 ;; arrays
-(check-equal? (prim 'make-array (list (NumV 3) (NumV 0))) (ArrV 22 3))
-(check-equal? (prim 'array (list (NumV 1) (NumV 2))) (ArrV 22 2))
+(check-equal? (prim 'make-array (list (NumV 3) (NumV 0))) (ArrV 23 3))
+(check-equal? (prim 'array (list (NumV 1) (NumV 2))) (ArrV 23 2))
 (define sto-arr : Store (make-initial-store 100))
 (define arr1 (interp-prim 'array (list (NumV 5) (NumV 6) (NumV 7)) sto-arr))
 (check-equal? (interp-prim 'aref (list arr1 (NumV 2)) sto-arr) (NumV 7))
 (check-equal? (interp-prim 'aset! (list arr1 (NumV 0) (StrV "x")) sto-arr) (NullV))
 (check-equal? (interp-prim 'aref (list arr1 (NumV 0)) sto-arr) (StrV "x"))
 ;; a second array is allocated right after the first
-(check-equal? (interp-prim 'array (list (NumV 1)) sto-arr) (ArrV 25 1))
-
+(check-equal? (interp-prim 'array (list (NumV 1)) sto-arr) (ArrV 26 1))
+ 
 ;; primitive errors
 (check-exn (regexp (regexp-quote "DRMG: Division by zero"))
            (lambda () (prim '/ (list (NumV 5) (NumV 0)))))
@@ -855,7 +743,7 @@
 (check-exn #rx"DRMG" (lambda () (interp-prim 'aset! (list arr1 (NumV 3) (NumV 0)) sto-arr)))
 (check-exn #rx"DRMG" (lambda () (prim 'aref (list (NumV 1) (NumV 0)))))
 ;; more arithmetic errors
-(check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '+ (list (NumV 2)))))
+(check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '+ (list (NumV 2))))) 
 (check-exn #rx"DRMG: Expected two numbers" (lambda () (prim '* (list (NumV 2) (NumV 3) (NumV 4)))))
 
 ;; division by zero
