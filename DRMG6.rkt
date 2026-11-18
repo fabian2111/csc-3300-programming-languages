@@ -105,6 +105,7 @@
      (define store : Store (make-vector memsize 0))
      (populate-store store initial-env)
      store]))
+
 ;-------------
 
 (define (populate-store [sto : Store] [bindings : (Listof InitialBinding)]) : Void
@@ -139,6 +140,7 @@
     [(PrimV _ ) "#<primop>"]
     [(NullV) "null"]
     [(ArrV _ _) "#<array>"]))
+
 
 
 ; ---------------------------------Look Up for Variable in Environment-------------------------------
@@ -212,7 +214,8 @@
        [else (AppC (LamC (map IdC vs) (parse expr2)) (map parse (cast expr (Listof Sexp))))])]
     [(list (? symbol? var) ':= val)
      (define valid (valid-id? var))
-     (if (not valid)
+     (define val-valid (valid-id? val))
+     (if  (not valid) 
          (error 'parse "DRMG: Reserved word used as variable")
          (MutC (IdC var) (parse val)))]
     [(list 'rocal (list (? symbol? name) '= expr) 'in body)
@@ -475,6 +478,10 @@
 
 
 ;---------------------------------------- Tests -------------------------------------
+(check-exn (regexp "DRMG:") (lambda () (make-initial-store 0)))
+(check-equal?(serialize (NullV)) "null")
+ 
+(check-equal?(serialize (ArrV 10 1)) "#<array>") 
 
 
 ;------------------ Println ------------------------------
